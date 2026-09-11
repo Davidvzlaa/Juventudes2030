@@ -1,0 +1,1056 @@
+// import { useEffect, useRef, useState } from 'react';
+// import { supabase } from '../../lib/supabase';
+
+// interface Rol { id: number; nombre: string; }
+// interface Municipio { id: number; nombre: string; }
+// interface Proyecto { id: number; nombre: string; }
+
+// export default function AdminUsuariosDinamico() {
+//   const [showForm, setShowForm] = useState(false);
+//   const [usuariosList, setUsuariosList] = useState<any[]>([]);
+//   const [loading, setLoading] = useState(true);
+//   const [isSaving, setIsSaving] = useState(false);
+
+//   const [roles, setRoles] = useState<Rol[]>([]);
+//   const [municipios, setMunicipios] = useState<Municipio[]>([]);
+//   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
+
+//   // ==========================================
+//   // ESTADOS DE FILTROS Y ORDENAMIENTO
+//   // ==========================================
+//   const [filtroRol, setFiltroRol] = useState<'Todos' | 'Administrador' | 'Embajador'>('Todos');
+//   const [filtroMunicipio, setFiltroMunicipio] = useState<string>('Todos');
+//   const [filtroMesCumple, setFiltroMesCumple] = useState<string>('Todos'); 
+
+//   // ==========================================
+//   // ESTADOS DEL FORMULARIO Y EDICIÓN
+//   // ==========================================
+//   const [editId, setEditId] = useState<string | null>(null);
+//   const [formUsuario, setFormUsuario] = useState({
+//     nombre: '', apellido: '', correo: '', telefono: '', fecha_nacimiento: '', rol_id: 0, activo: true, visible: true
+//   });
+//   const [formEmbajador, setFormEmbajador] = useState({ municipio_id: 0 });
+
+//   const [tieneProyecto, setTieneProyecto] = useState(false);
+//   const [crearNuevoProyecto, setCrearNuevoProyecto] = useState(false);
+//   const [proyectoSeleccionadoId, setProyectoSeleccionadoId] = useState(0);
+
+//   const [logoFile, setLogoFile] = useState<File | null>(null);
+//   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+//   const logoInputRef = useRef<HTMLInputElement>(null);
+//   const [formProyecto, setFormProyecto] = useState({ nombre: '', descripcion: '', activo: true });
+
+//   const meses = [
+//     { num: '01', nombre: 'Enero' }, { num: '02', nombre: 'Febrero' }, { num: '03', nombre: 'Marzo' },
+//     { num: '04', nombre: 'Abril' }, { num: '05', nombre: 'Mayo' }, { num: '06', nombre: 'Junio' },
+//     { num: '07', nombre: 'Julio' }, { num: '08', nombre: 'Agosto' }, { num: '09', nombre: 'Septiembre' },
+//     { num: '10', nombre: 'Octubre' }, { num: '11', nombre: 'Noviembre' }, { num: '12', nombre: 'Diciembre' }
+//   ];
+
+//   // ==========================================
+//   // FUNCIONES AUXILIARES
+//   // ==========================================
+//   const calcularEdad = (fechaNacimiento: string | null) => {
+//     if (!fechaNacimiento) return 'N/A';
+//     const hoy = new Date();
+//     const cumpleanos = new Date(fechaNacimiento);
+//     let edad = hoy.getFullYear() - cumpleanos.getFullYear();
+//     const mes = hoy.getMonth() - cumpleanos.getMonth();
+//     if (mes < 0 || (mes === 0 && hoy.getDate() < cumpleanos.getDate())) edad--;
+//     return edad;
+//   };
+
+//   const getMesDia = (fecha: string | null) => {
+//     if (!fecha) return '99-99'; 
+//     const [, mes, dia] = fecha.split('-');
+//     return `${mes}-${dia}`;
+//   };
+
+//   const processLogo = (file: File) => {
+//     setLogoFile(file);
+//     setLogoPreview(URL.createObjectURL(file));
+//   };
+
+//   // ==========================================
+//   // CARGA DE DATOS
+//   // ==========================================
+//   const fetchData = async () => {
+//     setLoading(true);
+//     const [resRoles, resMun, resProy] = await Promise.all([
+//       supabase.from('roles').select('id, nombre').eq('activo', true),
+//       supabase.from('municipios').select('id, nombre').eq('activo', true),
+//       supabase.from('proyectos_sociales').select('id, nombre').eq('activo', true)
+//     ]);
+
+//     if (resRoles.data) setRoles(resRoles.data);
+//     if (resMun.data) setMunicipios(resMun.data);
+//     if (resProy.data) setProyectos(resProy.data);
+
+//     const { data: usuariosData, error: usrErr } = await supabase
+//       .from('usuarios')
+//       .select(`
+//         id, nombre, apellido, correo, telefono, fecha_nacimiento, activo,
+//         roles(id, nombre),
+//         embajadores(
+//           municipio_id, proyecto_social_id,
+//           municipios(nombre),
+//           proyectos_sociales(nombre)
+//         ),
+//         actividades!creado_por_usuario_id(id)
+//       `);
+
+//     if (!usrErr && usuariosData) setUsuariosList(usuariosData);
+//     setLoading(false);
+//   };
+
+//   useEffect(() => { fetchData(); }, []);
+
+//   // ==========================================
+//   // LÓGICA DE EDICIÓN Y ELIMINACIÓN
+//   // ==========================================
+//   const handleEdit = (u: any) => {
+//     setEditId(u.id);
+//     setFormUsuario({
+//       nombre: u.nombre || '', apellido: u.apellido || '', correo: u.correo || '',
+//       telefono: u.telefono || '', fecha_nacimiento: u.fecha_nacimiento || '',
+//       rol_id: u.roles?.id || 0, activo: u.activo, visible: true
+//     });
+
+//     const esEmbajadorEditar = u.roles?.nombre === 'Embajador';
+//     if (esEmbajadorEditar && u.embajadores && u.embajadores.length > 0) {
+//       const emb = u.embajadores[0];
+//       setFormEmbajador({ municipio_id: emb.municipio_id || 0 });
+//       if (emb.proyecto_social_id) {
+//         setTieneProyecto(true);
+//         setProyectoSeleccionadoId(emb.proyecto_social_id);
+//         setCrearNuevoProyecto(false);
+//       } else {
+//         setTieneProyecto(false);
+//         setProyectoSeleccionadoId(0);
+//       }
+//     } else {
+//       setFormEmbajador({ municipio_id: 0 });
+//       setTieneProyecto(false);
+//     }
+    
+//     setShowForm(true);
+//     window.scrollTo({ top: 0, behavior: 'smooth' });
+//   };
+
+//   const handleDelete = async (id: string) => {
+//     if (!window.confirm("¿Estás seguro de eliminar este usuario?")) return;
+//     const { error } = await supabase.from('usuarios').delete().eq('id', id);
+//     if (error) alert("Error al eliminar. Sugerencia: Desactívalo desde 'Editar'.");
+//     else fetchData();
+//   };
+
+//   const resetForm = () => {
+//     setEditId(null);
+//     setFormUsuario({ nombre: '', apellido: '', correo: '', telefono: '', fecha_nacimiento: '', rol_id: 0, activo: true, visible: true });
+//     setFormEmbajador({ municipio_id: 0 });
+//     setTieneProyecto(false);
+//     setCrearNuevoProyecto(false);
+//     setProyectoSeleccionadoId(0);
+//     setFormProyecto({ nombre: '', descripcion: '', activo: true });
+//     setLogoFile(null);
+//     setLogoPreview(null);
+//     setShowForm(false); 
+//     window.scrollTo({ top: 0, behavior: 'smooth' });
+//   };
+
+//   // ==========================================
+//   // MOTOR DE FILTRADO Y ORDENAMIENTO 
+//   // ==========================================
+//   let usuariosFiltrados = usuariosList.filter(u => {
+//     const nombreRol = u.roles?.nombre;
+//     if (filtroRol !== 'Todos' && nombreRol !== filtroRol) return false;
+
+//     if (filtroMunicipio !== 'Todos') {
+//       const datosEmbajador = u.embajadores && u.embajadores.length > 0 ? u.embajadores[0] : null;
+//       if (datosEmbajador?.municipios?.nombre !== filtroMunicipio) return false;
+//     }
+
+//     if (filtroMesCumple !== 'Todos') {
+//       if (!u.fecha_nacimiento) return false;
+//       const mes = u.fecha_nacimiento.split('-')[1];
+//       if (mes !== filtroMesCumple) return false;
+//     }
+//     return true;
+//   });
+
+//   usuariosFiltrados.sort((a, b) => getMesDia(a.fecha_nacimiento).localeCompare(getMesDia(b.fecha_nacimiento)));
+
+//   const rolSeleccionado = roles.find(r => r.id === formUsuario.rol_id);
+//   const esEmbajador = rolSeleccionado?.nombre === 'Embajador';
+
+//   // ==========================================
+//   // GUARDAR (UPSERT)
+//   // ==========================================
+//   const handleSubmit = async (e: React.FormEvent) => {
+//     e.preventDefault();
+//     if (formUsuario.rol_id === 0) return alert("Selecciona un rol para el usuario.");
+//     if (esEmbajador && formEmbajador.municipio_id === 0) return alert("Selecciona un municipio para el embajador.");
+
+//     setIsSaving(true);
+//     try {
+//       let usuarioId = editId;
+
+//       if (editId) {
+//         await supabase.from('usuarios').update(formUsuario).eq('id', editId);
+//       } else {
+//         const { data: usuarioCreado, error: errUsuario } = await supabase.from('usuarios').insert([formUsuario]).select('id').single();
+//         if (errUsuario) throw errUsuario;
+//         usuarioId = usuarioCreado.id;
+//       }
+
+//       if (esEmbajador) {
+//         let proyectoFinalId = null;
+//         if (tieneProyecto) {
+//           if (crearNuevoProyecto) {
+//             if (!formProyecto.nombre) throw new Error("Escribe el nombre del proyecto nuevo.");
+//             let finalLogoUrl = null;
+//             if (logoFile) {
+//               const fileExt = logoFile.name.split('.').pop();
+//               const fileName = `logo_${Date.now()}.${fileExt}`;
+//               await supabase.storage.from('imagenes').upload(fileName, logoFile);
+//               finalLogoUrl = supabase.storage.from('imagenes').getPublicUrl(fileName).data.publicUrl;
+//             }
+//             const { data: proyCreado, error: errProy } = await supabase.from('proyectos_sociales').insert([{ ...formProyecto, logo: finalLogoUrl, activo: true }]).select('id').single();
+//             if (errProy) throw errProy;
+//             proyectoFinalId = proyCreado.id;
+//           } else {
+//             proyectoFinalId = proyectoSeleccionadoId;
+//           }
+//         }
+        
+//         const { error: errEmbajador } = await supabase.from('embajadores').upsert({
+//           usuario_id: usuarioId,
+//           municipio_id: formEmbajador.municipio_id,
+//           proyecto_social_id: proyectoFinalId,
+//           activo: true
+//         }, { onConflict: 'usuario_id' });
+
+//         if (errEmbajador) throw errEmbajador;
+//       }
+
+//       alert(`¡Registro ${editId ? 'actualizado' : 'guardado'} con éxito!`);
+//       resetForm(); 
+//       fetchData(); 
+      
+//     } catch (error: any) { alert(error.message); } finally { setIsSaving(false); }
+//   };
+
+//   if (loading) return <div className="p-8">Cargando módulo de usuarios...</div>;
+
+//   return (
+//     <div className="max-w-7xl mx-auto space-y-6">
+      
+//       <div className="flex justify-between items-center bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+//         <div>
+//           <h1 className="text-3xl font-bold text-gray-800">Directorio de Usuarios</h1>
+//           <p className="text-gray-600 mt-1">Ordenados cronológicamente por mes de cumpleaños.</p>
+//         </div>
+//         {!showForm && (
+//           <button onClick={() => setShowForm(true)} className="bg-blue-600 text-white px-6 py-3 rounded-md font-bold hover:bg-blue-700 transition flex items-center space-x-2">
+//             <span>➕</span><span>Añadir Nuevo</span>
+//           </button>
+//         )}
+//       </div>
+
+//       {showForm && (
+//         <div className="bg-white p-8 rounded-lg shadow-md border-t-4 border-blue-600 animate-in fade-in slide-in-from-top-4">
+//           <div className="flex justify-between items-center mb-6">
+//             <h2 className="text-2xl font-bold text-gray-800">{editId ? 'Editar Registro' : 'Alta de Registro'}</h2>
+//             <button onClick={resetForm} className="text-gray-500 hover:text-red-500 font-bold text-xl">✕</button>
+//           </div>
+          
+//           <form onSubmit={handleSubmit} className="space-y-8">
+//             <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+//               <h3 className="text-lg font-semibold mb-4 text-blue-900 border-b pb-2">1. Datos Personales</h3>
+//               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+//                 <div><label className="block text-sm font-medium mb-1">Nombre</label><input type="text" required className="w-full p-2 border rounded" value={formUsuario.nombre} onChange={e => setFormUsuario({...formUsuario, nombre: e.target.value})} /></div>
+//                 <div><label className="block text-sm font-medium mb-1">Apellido</label><input type="text" required className="w-full p-2 border rounded" value={formUsuario.apellido} onChange={e => setFormUsuario({...formUsuario, apellido: e.target.value})} /></div>
+//                 <div><label className="block text-sm font-medium mb-1">Correo Electrónico</label><input type="email" required className="w-full p-2 border rounded" value={formUsuario.correo} onChange={e => setFormUsuario({...formUsuario, correo: e.target.value})} /></div>
+//                 <div><label className="block text-sm font-medium mb-1">Teléfono</label><input type="tel" className="w-full p-2 border rounded" value={formUsuario.telefono} onChange={e => setFormUsuario({...formUsuario, telefono: e.target.value})} /></div>
+//                 <div><label className="block text-sm font-medium mb-1">Fecha de Nacimiento</label><input type="date" required className="w-full p-2 border rounded" value={formUsuario.fecha_nacimiento} onChange={e => setFormUsuario({...formUsuario, fecha_nacimiento: e.target.value})} /></div>
+//                 <div>
+//                   <label className="block text-sm font-bold mb-1 text-gray-700">Asignar Rol</label>
+//                   <select required className="w-full p-2 border rounded bg-white" value={formUsuario.rol_id} onChange={e => setFormUsuario({...formUsuario, rol_id: Number(e.target.value)})}>
+//                     <option value="0">-- Selecciona un Rol --</option>
+//                     {roles.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+//                   </select>
+//                 </div>
+//               </div>
+//             </div>
+
+//             {esEmbajador && (
+//               <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
+//                 <h3 className="text-lg font-semibold mb-4 text-blue-900 border-b border-blue-200 pb-2">2. Perfil de Embajador</h3>
+//                 <div className="mb-6">
+//                   <label className="block text-sm font-bold mb-1">Municipio de Operación</label>
+//                   <select required className="w-full p-2 border rounded bg-white" value={formEmbajador.municipio_id} onChange={e => setFormEmbajador({...formEmbajador, municipio_id: Number(e.target.value)})}>
+//                     <option value="0">-- Selecciona --</option>
+//                     {municipios.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+//                   </select>
+//                 </div>
+
+//                 <div className="bg-white p-4 rounded border border-gray-200">
+//                   <label className="flex items-center space-x-3 cursor-pointer mb-4">
+//                     <input type="checkbox" className="w-5 h-5 text-blue-600" checked={tieneProyecto} onChange={e => setTieneProyecto(e.target.checked)} />
+//                     <span className="font-bold text-gray-700">¿Tiene un Proyecto Social asignado?</span>
+//                   </label>
+
+//                   {tieneProyecto && (
+//                     <div className="pl-8 space-y-4 border-l-2 border-blue-300 ml-2">
+//                       <div className="flex space-x-4">
+//                         <button type="button" onClick={() => setCrearNuevoProyecto(false)} className={`px-4 py-2 text-sm font-bold rounded ${!crearNuevoProyecto ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}>Proyecto Existente</button>
+//                         <button type="button" onClick={() => setCrearNuevoProyecto(true)} className={`px-4 py-2 text-sm font-bold rounded ${crearNuevoProyecto ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'}`}>+ Crear Nuevo</button>
+//                       </div>
+
+//                       {!crearNuevoProyecto ? (
+//                         <select className="w-full p-2 border rounded bg-gray-50" value={proyectoSeleccionadoId} onChange={e => setProyectoSeleccionadoId(Number(e.target.value))}>
+//                           <option value="0">-- Buscar Proyecto --</option>
+//                           {proyectos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+//                         </select>
+//                       ) : (
+//                         <div className="grid grid-cols-1 gap-3 bg-gray-50 p-4 rounded border">
+//                           <div><label className="block text-xs font-bold text-gray-500 mb-1">Nombre</label><input type="text" className="w-full p-2 border rounded" value={formProyecto.nombre} onChange={e => setFormProyecto({...formProyecto, nombre: e.target.value})} /></div>
+//                           <div><label className="block text-xs font-bold text-gray-500 mb-1">Descripción</label><textarea className="w-full p-2 border rounded" rows={2} value={formProyecto.descripcion} onChange={e => setFormProyecto({...formProyecto, descripcion: e.target.value})}></textarea></div>
+//                           <div>
+//                             <label className="block text-xs font-bold text-gray-500 mb-1">Logotipo del Proyecto</label>
+//                             <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files?.[0]) processLogo(e.dataTransfer.files[0]); }} onClick={() => logoInputRef.current?.click()} className="border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center bg-white cursor-pointer">
+//                               <input type="file" accept="image/*" className="hidden" ref={logoInputRef} onChange={(e) => { if (e.target.files?.[0]) processLogo(e.target.files[0]); }} />
+//                               {logoPreview ? <img src={logoPreview} alt="Preview" className="h-20 object-contain rounded" /> : <p className="text-sm text-gray-500">Arrastra el logo aquí</p>}
+//                             </div>
+//                           </div>
+//                         </div>
+//                       )}
+//                     </div>
+//                   )}
+//                 </div>
+//               </div>
+//             )}
+
+//             <div className="flex justify-end pt-6 border-t border-gray-200 space-x-4">
+//               <button type="button" onClick={resetForm} className="bg-gray-300 text-gray-800 px-6 py-3 rounded-md font-bold hover:bg-gray-400">Cancelar</button>
+//               <button type="submit" disabled={isSaving} className="bg-gray-900 text-white px-8 py-3 rounded-md font-bold hover:bg-gray-800 disabled:bg-gray-400">{isSaving ? 'Guardando...' : (editId ? 'Actualizar' : 'Guardar Todo')}</button>
+//             </div>
+//           </form>
+//         </div>
+//       )}
+
+//       {/* ==========================================
+//           BARRA DE FILTROS 
+//       ========================================== */}
+//       <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+//         <div className="flex space-x-2 mb-6 border-b pb-4 overflow-x-auto">
+//           <button onClick={() => setFiltroRol('Todos')} className={`px-5 py-2 rounded-full font-bold text-sm whitespace-nowrap transition ${filtroRol === 'Todos' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Todos</button>
+//           <button onClick={() => setFiltroRol('Administrador')} className={`px-5 py-2 rounded-full font-bold text-sm whitespace-nowrap transition ${filtroRol === 'Administrador' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Administradores</button>
+//           <button onClick={() => setFiltroRol('Embajador')} className={`px-5 py-2 rounded-full font-bold text-sm whitespace-nowrap transition ${filtroRol === 'Embajador' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Embajadores</button>
+//         </div>
+
+//         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+//           <div>
+//             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Municipio</label>
+//             <select className="w-full p-2.5 border rounded-md bg-gray-50 disabled:opacity-50" value={filtroMunicipio} onChange={e => setFiltroMunicipio(e.target.value)} disabled={filtroRol === 'Administrador'}>
+//               <option value="Todos">Todos</option>
+//               {municipios.map(m => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
+//             </select>
+//           </div>
+//           <div>
+//             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Mes de Cumpleaños</label>
+//             <select className="w-full p-2.5 border rounded-md bg-gray-50" value={filtroMesCumple} onChange={e => setFiltroMesCumple(e.target.value)}>
+//               <option value="Todos">Cualquier mes</option>
+//               {meses.map(m => <option key={m.num} value={m.num}>{m.nombre}</option>)}
+//             </select>
+//           </div>
+//           <div className="flex items-end">
+//             <button onClick={() => { setFiltroRol('Todos'); setFiltroMunicipio('Todos'); setFiltroMesCumple('Todos'); }} className="w-full bg-white border-2 border-gray-200 text-gray-600 font-bold p-2.5 rounded-md hover:bg-gray-50 transition">
+//               Limpiar Filtros
+//             </button>
+//           </div>
+//         </div>
+//       </div>
+
+//       {/* ==========================================
+//           TABLA 
+//       ========================================== */}
+//       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+//         <div className="overflow-x-auto">
+//           <table className="min-w-full text-left border-collapse text-sm">
+//             <thead>
+//               <tr className="bg-gray-800 text-white">
+//                 <th className="border-b p-3 w-10 text-center rounded-tl-md">No.</th>
+//                 <th className="border-b p-3 whitespace-nowrap">Nombre Completo</th>
+//                 <th className="border-b p-3 text-center">Edad</th>
+//                 <th className="border-b p-3 whitespace-nowrap">Fecha de Nac.</th>
+//                 <th className="border-b p-3">Contacto</th>
+//                 <th className="border-b p-3">Rol</th>
+//                 <th className="border-b p-3">Municipio</th>
+//                 <th className="border-b p-3">Proyecto Social</th>
+//                 <th className="border-b p-3 text-center">Actividades</th>
+//                 <th className="border-b p-3 text-center">Estado</th>
+//                 <th className="border-b p-3 text-center rounded-tr-md">Acciones</th>
+//               </tr>
+//             </thead>
+//             <tbody>
+//               {usuariosFiltrados.length === 0 ? (
+//                 <tr><td colSpan={11} className="p-8 text-center text-gray-500">No se encontraron usuarios.</td></tr>
+//               ) : (
+//                 usuariosFiltrados.map((u, index) => {
+//                   const esRolEmbajador = u.roles?.nombre === 'Embajador';
+//                   const datosEmbajador = u.embajadores && u.embajadores.length > 0 ? u.embajadores[0] : null;
+//                   const cantActividades = u.actividades ? u.actividades.length : 0;
+//                   const edadCalculada = calcularEdad(u.fecha_nacimiento);
+
+//                   return (
+//                     <tr key={u.id} className="hover:bg-gray-50 transition-colors">
+//                       <td className="border-b p-3 text-center font-bold text-gray-400">{index + 1}</td>
+//                       <td className="border-b p-3 font-bold text-gray-800 whitespace-nowrap">{u.nombre} {u.apellido}</td>
+//                       <td className="border-b p-3 text-center font-medium text-gray-700">{edadCalculada !== 'N/A' ? `${edadCalculada} años` : '-'}</td>
+//                       <td className="border-b p-3 text-gray-600 whitespace-nowrap">{u.fecha_nacimiento || '-'}</td>
+                      
+//                       {/* NUEVA COLUMNA CONTACTO */}
+//                       <td className="border-b p-3">
+//                         <div className="text-gray-800 font-medium">{u.correo}</div>
+//                         <div className="text-xs text-gray-500">{u.telefono || 'Sin teléfono'}</div>
+//                       </td>
+
+//                       <td className="border-b p-3"><span className={`px-2 py-1 rounded-md text-xs font-bold ${esRolEmbajador ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>{u.roles?.nombre || 'Sin rol'}</span></td>
+//                       <td className="border-b p-3 text-gray-600">{esRolEmbajador && datosEmbajador?.municipios?.nombre ? datosEmbajador.municipios.nombre : '-'}</td>
+//                       <td className="border-b p-3 text-blue-600 font-semibold max-w-[150px] truncate">{esRolEmbajador && datosEmbajador?.proyectos_sociales?.nombre ? datosEmbajador.proyectos_sociales.nombre : '-'}</td>
+//                       <td className="border-b p-3 text-center">{esRolEmbajador ? <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full font-bold text-xs">{cantActividades}</span> : '-'}</td>
+//                       <td className="border-b p-3 text-center"><span className={`px-2 py-1 rounded text-xs font-bold ${u.activo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{u.activo ? 'Activo' : 'Baja'}</span></td>
+//                       <td className="border-b p-3 text-center space-x-3 whitespace-nowrap">
+//                         <button onClick={() => handleEdit(u)} className="text-blue-600 font-bold hover:underline">Editar</button>
+//                         <button onClick={() => handleDelete(u.id)} className="text-red-600 font-bold hover:underline">Eliminar</button>
+//                       </td>
+//                     </tr>
+//                   );
+//                 })
+//               )}
+//             </tbody>
+//           </table>
+//         </div>
+//       </div>
+//     </div>
+//   );
+// }
+
+import { useEffect, useRef, useState } from 'react';
+import { supabase } from '../../lib/supabase';
+import { createClient } from '@supabase/supabase-js'; 
+import { 
+  Users, PlusCircle, Search, Edit2, Trash2, X, Save, 
+  Loader2, UploadCloud, MapPin, Calendar, Mail, Phone, Shield, Folder, Lock
+} from 'lucide-react';
+
+interface Rol { id: number; nombre: string; }
+interface Municipio { id: number; nombre: string; }
+interface Proyecto { id: number; nombre: string; }
+
+// Obtenemos las credenciales de entorno
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+// ==========================================
+// CONSTANTE: CONTRASEÑA POR DEFECTO
+// ==========================================
+const PASSWORD_TEMPORAL_DEFAULT = 'Juventudes2030*26';
+
+export default function AdminUsuariosDinamico() {
+  const [showForm, setShowForm] = useState(false);
+  const [usuariosList, setUsuariosList] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const [roles, setRoles] = useState<Rol[]>([]);
+  const [municipios, setMunicipios] = useState<Municipio[]>([]);
+  const [proyectos, setProyectos] = useState<Proyecto[]>([]);
+
+  // Filtros
+  const [filtroRol, setFiltroRol] = useState<'Todos' | 'Administrador' | 'Embajador'>('Todos');
+  const [filtroMunicipio, setFiltroMunicipio] = useState<string>('Todos');
+  const [filtroMesCumple, setFiltroMesCumple] = useState<string>('Todos'); 
+
+  // Formulario
+  const [editId, setEditId] = useState<string | null>(null);
+  const [formUsuario, setFormUsuario] = useState({
+    nombre: '', apellido: '', correo: '', telefono: '', fecha_nacimiento: '', rol_id: 0, activo: true, visible: true
+  });
+  const [formEmbajador, setFormEmbajador] = useState({ municipio_id: 0 });
+
+  // Lógica de Proyecto
+  const [tieneProyecto, setTieneProyecto] = useState(false);
+  const [crearNuevoProyecto, setCrearNuevoProyecto] = useState(false);
+  const [proyectoSeleccionadoId, setProyectoSeleccionadoId] = useState(0);
+
+  // Logo
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [formProyecto, setFormProyecto] = useState({ nombre: '', descripcion: '', activo: true });
+
+  const meses = [
+    { num: '01', nombre: 'Enero' }, { num: '02', nombre: 'Febrero' }, { num: '03', nombre: 'Marzo' },
+    { num: '04', nombre: 'Abril' }, { num: '05', nombre: 'Mayo' }, { num: '06', nombre: 'Junio' },
+    { num: '07', nombre: 'Julio' }, { num: '08', nombre: 'Agosto' }, { num: '09', nombre: 'Septiembre' },
+    { num: '10', nombre: 'Octubre' }, { num: '11', nombre: 'Noviembre' }, { num: '12', nombre: 'Diciembre' }
+  ];
+
+  const calcularEdad = (fechaNacimiento: string | null) => {
+    if (!fechaNacimiento) return 'N/A';
+    const hoy = new Date();
+    const cumpleanos = new Date(fechaNacimiento);
+    let edad = hoy.getFullYear() - cumpleanos.getFullYear();
+    const mes = hoy.getMonth() - cumpleanos.getMonth();
+    if (mes < 0 || (mes === 0 && hoy.getDate() < cumpleanos.getDate())) edad--;
+    return edad;
+  };
+
+  const getMesDia = (fecha: string | null) => {
+    if (!fecha) return '99-99'; 
+    const [, mes, dia] = fecha.split('-');
+    return `${mes}-${dia}`;
+  };
+
+  const processLogo = (file: File) => {
+    setLogoFile(file);
+    setLogoPreview(URL.createObjectURL(file));
+  };
+
+  const fetchData = async () => {
+    setLoading(true);
+    const [resRoles, resMun, resProy] = await Promise.all([
+      supabase.from('roles').select('id, nombre').eq('activo', true),
+      supabase.from('municipios').select('id, nombre').eq('activo', true),
+      supabase.from('proyectos_sociales').select('id, nombre').eq('activo', true)
+    ]);
+
+    if (resRoles.data) setRoles(resRoles.data);
+    if (resMun.data) setMunicipios(resMun.data);
+    if (resProy.data) setProyectos(resProy.data);
+
+    const { data: usuariosData, error: usrErr } = await supabase
+      .from('usuarios')
+      .select(`
+        id, nombre, apellido, correo, telefono, fecha_nacimiento, activo,
+        roles(id, nombre),
+        embajadores(
+          municipio_id, proyecto_social_id,
+          municipios(nombre),
+          proyectos_sociales(nombre)
+        ),
+        actividades!creado_por_usuario_id(id)
+      `);
+
+    if (!usrErr && usuariosData) setUsuariosList(usuariosData);
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
+  const handleEdit = (u: any) => {
+    setEditId(u.id);
+    setFormUsuario({
+      nombre: u.nombre || '', apellido: u.apellido || '', correo: u.correo || '',
+      telefono: u.telefono || '', fecha_nacimiento: u.fecha_nacimiento || '',
+      rol_id: u.roles?.id || 0, activo: u.activo, visible: true
+    });
+
+    const esEmbajadorEditar = u.roles?.nombre === 'Embajador';
+    
+    // SOLUCIÓN AL BUG DE CARGA: Verificamos de forma segura si la relación es Arreglo u Objeto
+    const emb = Array.isArray(u.embajadores) ? u.embajadores[0] : u.embajadores;
+
+    if (esEmbajadorEditar && emb) {
+      setFormEmbajador({ municipio_id: emb.municipio_id || 0 });
+      if (emb.proyecto_social_id) {
+        setTieneProyecto(true);
+        setProyectoSeleccionadoId(emb.proyecto_social_id);
+        setCrearNuevoProyecto(false);
+      } else {
+        setTieneProyecto(false);
+        setProyectoSeleccionadoId(0);
+      }
+    } else {
+      setFormEmbajador({ municipio_id: 0 });
+      setTieneProyecto(false);
+    }
+    
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("¿Estás seguro de eliminar este usuario?")) return;
+    const { error } = await supabase.from('usuarios').delete().eq('id', id);
+    if (error) alert("Error al eliminar. Sugerencia: Desactívalo desde 'Editar'.");
+    else fetchData();
+  };
+
+  const resetForm = () => {
+    setEditId(null);
+    setFormUsuario({ nombre: '', apellido: '', correo: '', telefono: '', fecha_nacimiento: '', rol_id: 0, activo: true, visible: true });
+    setFormEmbajador({ municipio_id: 0 });
+    setTieneProyecto(false);
+    setCrearNuevoProyecto(false);
+    setProyectoSeleccionadoId(0);
+    setFormProyecto({ nombre: '', descripcion: '', activo: true });
+    setLogoFile(null);
+    setLogoPreview(null);
+    setShowForm(false); 
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  let usuariosFiltrados = usuariosList.filter(u => {
+    const nombreRol = u.roles?.nombre;
+    if (filtroRol !== 'Todos' && nombreRol !== filtroRol) return false;
+    if (filtroMunicipio !== 'Todos') {
+      const datosEmbajador = Array.isArray(u.embajadores) ? u.embajadores[0] : u.embajadores;
+      if (datosEmbajador?.municipios?.nombre !== filtroMunicipio) return false;
+    }
+    if (filtroMesCumple !== 'Todos') {
+      if (!u.fecha_nacimiento) return false;
+      const mes = u.fecha_nacimiento.split('-')[1];
+      if (mes !== filtroMesCumple) return false;
+    }
+    return true;
+  });
+
+  usuariosFiltrados.sort((a, b) => getMesDia(a.fecha_nacimiento).localeCompare(getMesDia(b.fecha_nacimiento)));
+
+  const rolSeleccionado = roles.find(r => r.id === formUsuario.rol_id);
+  const esEmbajador = rolSeleccionado?.nombre === 'Embajador';
+
+  // BANDERA PARA OCULTAR COLUMNAS DINÁMICAMENTE
+  const mostrarColumnasEmbajador = filtroRol !== 'Administrador';
+
+  // ==========================================
+  // GUARDAR (CREAR EN AUTH + PERFIL)
+  // ==========================================
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (formUsuario.rol_id === 0) return alert("Selecciona un rol para el usuario.");
+    if (esEmbajador && formEmbajador.municipio_id === 0) return alert("Selecciona un municipio para el embajador.");
+
+    setIsSaving(true);
+    try {
+      let usuarioId = editId;
+
+      if (editId) {
+        // ACTUALIZAR REGISTRO EXISTENTE
+        const { error: errUpdate } = await supabase.from('usuarios').update(formUsuario).eq('id', editId);
+        if (errUpdate) throw errUpdate;
+      } else {
+        // CREAR NUEVO USUARIO (Sin cerrar la sesión del admin actual)
+        const authClient = createClient(supabaseUrl, supabaseKey, {
+          auth: { persistSession: false, autoRefreshToken: false }
+        });
+
+        // Registramos al usuario usando la contraseña constante
+        const { data: authData, error: authErr } = await authClient.auth.signUp({
+          email: formUsuario.correo,
+          password: PASSWORD_TEMPORAL_DEFAULT,
+        });
+
+        if (authErr) throw authErr;
+        
+        const newUserId = authData.user?.id;
+        if (!newUserId) throw new Error("No se pudo crear la credencial de acceso. Verifica que el correo no esté ya registrado.");
+
+        // Registramos su perfil en la tabla pública
+        const payloadNuevoUsuario = { 
+          ...formUsuario, 
+          id: newUserId,
+          requiere_cambio_password: true 
+        };
+
+        const { error: errUsuario } = await supabase.from('usuarios').upsert([payloadNuevoUsuario]);        
+        if (errUsuario) throw errUsuario;
+
+        usuarioId = newUserId;
+      }
+
+      // LÓGICA DE PROYECTOS Y EMBAJADORES (También se ejecuta al actualizar)
+      if (esEmbajador && usuarioId) {
+        let proyectoFinalId = null;
+        if (tieneProyecto) {
+          if (crearNuevoProyecto) {
+            if (!formProyecto.nombre) throw new Error("Escribe el nombre del proyecto nuevo.");
+            let finalLogoUrl = null;
+            if (logoFile) {
+              const fileExt = logoFile.name.split('.').pop();
+              const fileName = `logo_${Date.now()}.${fileExt}`;
+              await supabase.storage.from('imagenes').upload(fileName, logoFile);
+              finalLogoUrl = supabase.storage.from('imagenes').getPublicUrl(fileName).data.publicUrl;
+            }
+            const { data: proyCreado, error: errProy } = await supabase.from('proyectos_sociales').insert([{ ...formProyecto, logo: finalLogoUrl, activo: true }]).select('id').single();
+            if (errProy) throw errProy;
+            proyectoFinalId = proyCreado.id;
+          } else {
+            proyectoFinalId = proyectoSeleccionadoId > 0 ? proyectoSeleccionadoId : null;
+          }
+        }
+        
+        // El Upsert actualizará si ya existe o lo creará si es nuevo
+        const { error: errEmbajador } = await supabase.from('embajadores').upsert({
+          usuario_id: usuarioId,
+          municipio_id: formEmbajador.municipio_id,
+          proyecto_social_id: proyectoFinalId,
+          activo: true
+        }, { onConflict: 'usuario_id' });
+
+        if (errEmbajador) throw errEmbajador;
+      }
+
+      alert(`¡Registro ${editId ? 'actualizado' : 'guardado'} con éxito! ${!editId ? `\n\nEl usuario ya puede ingresar con el correo ${formUsuario.correo} y la contraseña genérica.` : ''}`);
+      resetForm(); 
+      fetchData(); 
+      
+    } catch (error: any) { alert(error.message); } finally { setIsSaving(false); }
+  };
+
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+      <Loader2 className="animate-spin mb-4" size={40} />
+      <p className="font-medium text-lg">Cargando directorio de usuarios...</p>
+    </div>
+  );
+
+  return (
+    <div className="max-w-7xl mx-auto space-y-6 pb-12">
+      
+      {/* CABECERA */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-6 rounded-xl shadow-sm border border-gray-200 gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
+            <Users className="text-[#00689D]" size={28} /> Directorio de Usuarios
+          </h1>
+          <p className="text-gray-500 mt-1 text-sm md:text-base">Administra y filtra usuarios registrados cronológicamente por mes de cumpleaños.</p>
+        </div>
+        {!showForm && (
+          <button onClick={() => setShowForm(true)} className="w-full sm:w-auto bg-[#00689D] text-white px-6 py-3 rounded-lg font-bold hover:bg-[#00527A] transition-colors shadow-md flex items-center justify-center gap-2">
+            <PlusCircle size={20} /> Añadir Nuevo
+          </button>
+        )}
+      </div>
+
+      {/* FORMULARIO DE ALTA/EDICIÓN */}
+      {showForm && (
+        <div className="bg-white p-6 md:p-8 rounded-xl shadow-md border-t-4 border-[#00689D] animate-in fade-in slide-in-from-top-4 relative overflow-hidden">
+          <div className="flex justify-between items-center mb-8 border-b border-gray-100 pb-4">
+            <h2 className="text-xl md:text-2xl font-bold text-gray-900 flex items-center gap-2">
+              {editId ? <Edit2 className="text-blue-500" /> : <PlusCircle className="text-green-500" />}
+              {editId ? 'Editar Registro de Usuario' : 'Alta de Nuevo Usuario'}
+            </h2>
+            <button onClick={resetForm} className="text-gray-400 hover:text-red-500 transition-colors p-2 bg-gray-50 rounded-full hover:bg-red-50">
+              <X size={24} />
+            </button>
+          </div>
+          
+          <form onSubmit={handleSubmit} className="space-y-8">
+            {/* SECCIÓN 1: DATOS PERSONALES */}
+            <div className="bg-gray-50/50 p-6 rounded-xl border border-gray-200">
+              <h3 className="text-lg font-bold mb-6 text-[#00689D] flex items-center gap-2">
+                <Users size={20}/> 1. Datos Personales y Acceso
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Nombre</label>
+                  <input type="text" required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none transition-all" value={formUsuario.nombre} onChange={e => setFormUsuario({...formUsuario, nombre: e.target.value})} placeholder="Ej. Juan" />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Apellido</label>
+                  <input type="text" required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none transition-all" value={formUsuario.apellido} onChange={e => setFormUsuario({...formUsuario, apellido: e.target.value})} placeholder="Ej. Pérez" />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1 flex items-center gap-1"><Mail size={16}/> Correo Electrónico (Para Iniciar Sesión)</label>
+                  <input type="email" required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none transition-all" value={formUsuario.correo} onChange={e => setFormUsuario({...formUsuario, correo: e.target.value})} placeholder="correo@ejemplo.com" />
+                </div>
+                
+                {/* CAMPO DE CONTRASEÑA FIJO O DESHABILITADO */}
+                {!editId ? (
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1 flex items-center gap-1"><Lock size={16}/> Contraseña Generada</label>
+                    <input 
+                      type="text" 
+                      disabled 
+                      className="w-full p-3 border border-gray-200 rounded-lg bg-gray-200 text-gray-600 font-mono font-bold cursor-not-allowed select-all" 
+                      value={PASSWORD_TEMPORAL_DEFAULT} 
+                    />
+                    <p className="text-xs text-[#00689D] font-medium mt-1">El usuario deberá cambiarla obligatoriamente al iniciar sesión por primera vez.</p>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-bold text-gray-400 mb-1 flex items-center gap-1"><Lock size={16}/> Contraseña</label>
+                    <input type="text" disabled className="w-full p-3 border border-gray-200 bg-gray-100 rounded-lg text-gray-500 cursor-not-allowed" value="••••••••" />
+                    <p className="text-xs text-gray-400 mt-1">La contraseña solo puede cambiarla el propio usuario.</p>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1 flex items-center gap-1"><Phone size={16}/> Teléfono</label>
+                  <input type="tel" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none transition-all" value={formUsuario.telefono} onChange={e => setFormUsuario({...formUsuario, telefono: e.target.value})} placeholder="10 dígitos" />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1 flex items-center gap-1"><Calendar size={16}/> Fecha de Nacimiento</label>
+                  <input type="date" required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none transition-all" value={formUsuario.fecha_nacimiento} onChange={e => setFormUsuario({...formUsuario, fecha_nacimiento: e.target.value})} />
+                </div>
+                <div className="md:col-span-2 border-t border-gray-200 mt-2 pt-4">
+                  <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-1"><Shield size={16}/> Asignar Rol en la Plataforma</label>
+                  <select required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none transition-all bg-white" value={formUsuario.rol_id} onChange={e => setFormUsuario({...formUsuario, rol_id: Number(e.target.value)})}>
+                    <option value="0">-- Selecciona un Rol --</option>
+                    {roles.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* SECCIÓN 2: PERFIL DE EMBAJADOR */}
+            {esEmbajador && (
+              <div className="bg-blue-50/50 p-6 rounded-xl border border-blue-200 animate-in fade-in slide-in-from-bottom-4">
+                <h3 className="text-lg font-bold mb-6 text-[#00689D] flex items-center gap-2">
+                  <MapPin size={20}/> 2. Perfil de Embajador
+                </h3>
+                <div className="mb-6">
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Municipio de Operación</label>
+                  <select required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none bg-white" value={formEmbajador.municipio_id} onChange={e => setFormEmbajador({...formEmbajador, municipio_id: Number(e.target.value)})}>
+                    <option value="0">-- Selecciona Municipio --</option>
+                    {municipios.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                  </select>
+                </div>
+
+                {/* SECCIÓN 3: PROYECTO SOCIAL */}
+                <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+                  <label className="flex items-center space-x-3 cursor-pointer mb-5">
+                    <input type="checkbox" className="w-5 h-5 text-[#00689D] border-gray-300 rounded focus:ring-[#00689D]" checked={tieneProyecto} onChange={e => setTieneProyecto(e.target.checked)} />
+                    <span className="font-bold text-gray-800 text-base">¿Tiene un Proyecto Social asignado?</span>
+                  </label>
+
+                  {tieneProyecto && (
+                    <div className="pl-8 space-y-5 border-l-2 border-blue-200 ml-2 animate-in fade-in">
+                      <div className="flex flex-wrap gap-3">
+                        <button type="button" onClick={() => setCrearNuevoProyecto(false)} className={`px-5 py-2 text-sm font-bold rounded-md transition-colors ${!crearNuevoProyecto ? 'bg-[#00689D] text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Buscar Existente</button>
+                        <button type="button" onClick={() => setCrearNuevoProyecto(true)} className={`px-5 py-2 text-sm font-bold rounded-md transition-colors ${crearNuevoProyecto ? 'bg-green-600 text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>+ Crear Nuevo</button>
+                      </div>
+
+                      {!crearNuevoProyecto ? (
+                        <select className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] bg-gray-50 outline-none" value={proyectoSeleccionadoId} onChange={e => setProyectoSeleccionadoId(Number(e.target.value))}>
+                          <option value="0">-- Buscar Proyecto en Catálogo --</option>
+                          {proyectos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                        </select>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-5 bg-gray-50 p-5 rounded-xl border border-gray-200">
+                          <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nombre del Proyecto</label>
+                            <input type="text" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none" value={formProyecto.nombre} onChange={e => setFormProyecto({...formProyecto, nombre: e.target.value})} placeholder="Nombre de la iniciativa..." />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Descripción</label>
+                            <textarea className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none resize-none" rows={3} value={formProyecto.descripcion} onChange={e => setFormProyecto({...formProyecto, descripcion: e.target.value})} placeholder="Breve descripción del proyecto..."></textarea>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Logotipo del Proyecto</label>
+                            <div 
+                              onDragOver={(e) => e.preventDefault()} 
+                              onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files?.[0]) processLogo(e.dataTransfer.files[0]); }} 
+                              onClick={() => logoInputRef.current?.click()} 
+                              className="border-2 border-dashed border-gray-300 rounded-xl p-6 flex flex-col items-center justify-center bg-white hover:bg-green-50 hover:border-green-500 transition-colors cursor-pointer group"
+                            >
+                              <input type="file" accept="image/*" className="hidden" ref={logoInputRef} onChange={(e) => { if (e.target.files?.[0]) processLogo(e.target.files[0]); }} />
+                              {logoPreview ? (
+                                <div className="relative flex flex-col items-center">
+                                  <img src={logoPreview} alt="Preview" className="h-24 object-contain rounded-md shadow-sm" />
+                                  <p className="text-xs text-center mt-2 text-green-600 font-bold opacity-0 group-hover:opacity-100 transition-opacity">Clic para cambiar</p>
+                                </div>
+                              ) : (
+                                <div className="text-center flex flex-col items-center">
+                                  <div className="bg-gray-100 p-3 rounded-full text-gray-400 group-hover:bg-green-500 group-hover:text-white transition-colors mb-2">
+                                    <UploadCloud size={24} />
+                                  </div>
+                                  <p className="text-sm text-gray-700 font-semibold">Arrastra el logo aquí</p>
+                                  <p className="text-xs text-gray-400">PNG o JPG</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col-reverse sm:flex-row justify-end pt-6 border-t border-gray-200 gap-3">
+              <button type="button" onClick={resetForm} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white border border-gray-300 text-gray-700 px-6 py-3 rounded-lg font-bold hover:bg-gray-50 transition-colors">
+                <X size={18} /> Cancelar
+              </button>
+              <button type="submit" disabled={isSaving} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#00689D] text-white px-8 py-3 rounded-lg font-bold hover:bg-[#00527A] disabled:bg-gray-400 transition-colors shadow-md">
+                {isSaving ? <><Loader2 className="animate-spin" size={18}/> Guardando...</> : <><Save size={18}/> {editId ? 'Actualizar Registro' : 'Guardar Usuario'}</>}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ==========================================
+          BARRA DE FILTROS 
+      ========================================== */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <div className="flex space-x-2 mb-6 border-b border-gray-100 pb-5 overflow-x-auto scrollbar-hide">
+          <button onClick={() => setFiltroRol('Todos')} className={`px-5 py-2.5 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${filtroRol === 'Todos' ? 'bg-[#00689D] text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Todos los Usuarios</button>
+          <button onClick={() => setFiltroRol('Administrador')} className={`px-5 py-2.5 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${filtroRol === 'Administrador' ? 'bg-purple-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Administradores</button>
+          <button onClick={() => setFiltroRol('Embajador')} className={`px-5 py-2.5 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${filtroRol === 'Embajador' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Embajadores</button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Filtrar Municipio</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <MapPin size={16} className="text-gray-400" />
+              </div>
+              <select className="w-full pl-9 p-3 border border-gray-300 rounded-lg bg-gray-50 focus:bg-white focus:ring-2 focus:ring-[#00689D] outline-none appearance-none disabled:opacity-50 transition-colors" value={filtroMunicipio} onChange={e => setFiltroMunicipio(e.target.value)} disabled={filtroRol === 'Administrador'}>
+                <option value="Todos">Cualquier Municipio</option>
+                {municipios.map(m => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Mes de Cumpleaños</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Calendar size={16} className="text-gray-400" />
+              </div>
+              <select className="w-full pl-9 p-3 border border-gray-300 rounded-lg bg-gray-50 focus:bg-white focus:ring-2 focus:ring-[#00689D] outline-none appearance-none transition-colors" value={filtroMesCumple} onChange={e => setFiltroMesCumple(e.target.value)}>
+                <option value="Todos">Cualquier mes</option>
+                {meses.map(m => <option key={m.num} value={m.num}>{m.nombre}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="flex items-end">
+            <button onClick={() => { setFiltroRol('Todos'); setFiltroMunicipio('Todos'); setFiltroMesCumple('Todos'); }} className="w-full bg-white border border-gray-300 text-gray-700 font-bold p-3 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
+              <Search size={18} /> Limpiar Filtros
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ==========================================
+          TABLA 
+      ========================================== */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center">
+          <h3 className="font-bold text-gray-700 text-sm md:text-base">Resultados de búsqueda</h3>
+          <span className="bg-[#00689D]/10 text-[#00689D] px-3 py-1 rounded-full text-xs font-bold border border-[#00689D]/20">
+            {usuariosFiltrados.length} usuarios encontrados
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left border-collapse text-sm">
+            <thead>
+              <tr className="bg-white text-gray-500 border-b border-gray-200 text-xs uppercase tracking-wider">
+                <th className="p-4 font-bold text-center w-12">#</th>
+                <th className="p-4 font-bold whitespace-nowrap">Nombre Completo</th>
+                <th className="p-4 font-bold text-center">Edad</th>
+                <th className="p-4 font-bold whitespace-nowrap">Fecha Nac.</th>
+                <th className="p-4 font-bold">Contacto</th>
+                <th className="p-4 font-bold">Rol</th>
+                
+                {/* COLUMNAS CONDICIONALES */}
+                {mostrarColumnasEmbajador && <th className="p-4 font-bold">Municipio / Proyecto</th>}
+                {mostrarColumnasEmbajador && <th className="p-4 font-bold text-center">Actividades</th>}
+                
+                <th className="p-4 font-bold text-center">Estado</th>
+                <th className="p-4 font-bold text-center">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {usuariosFiltrados.length === 0 ? (
+                <tr>
+                  <td colSpan={mostrarColumnasEmbajador ? 10 : 8} className="p-12 text-center text-gray-500">
+                    <Users className="mx-auto h-12 w-12 text-gray-300 mb-3" />
+                    <p className="font-medium text-lg">No se encontraron usuarios</p>
+                    <p className="text-sm">Intenta ajustar los filtros de búsqueda.</p>
+                  </td>
+                </tr>
+              ) : (
+                usuariosFiltrados.map((u, index) => {
+                  const esRolEmbajador = u.roles?.nombre === 'Embajador';
+                  const datosEmbajador = Array.isArray(u.embajadores) ? u.embajadores[0] : u.embajadores;
+                  const cantActividades = u.actividades ? u.actividades.length : 0;
+                  const edadCalculada = calcularEdad(u.fecha_nacimiento);
+
+                  return (
+                    <tr key={u.id} className="hover:bg-blue-50/30 transition-colors">
+                      <td className="p-4 text-center font-bold text-gray-400">{index + 1}</td>
+                      <td className="p-4">
+                        <div className="font-bold text-gray-900 whitespace-nowrap">{u.nombre} {u.apellido}</div>
+                      </td>
+                      <td className="p-4 text-center">
+                        <span className="bg-gray-100 text-gray-700 px-2.5 py-1 rounded-md font-bold text-xs">
+                          {edadCalculada !== 'N/A' ? `${edadCalculada}` : '-'}
+                        </span>
+                      </td>
+                      <td className="p-4 text-gray-600 whitespace-nowrap text-xs font-medium">{u.fecha_nacimiento || '-'}</td>
+                      
+                      <td className="p-4">
+                        <div className="text-gray-900 font-medium text-xs">{u.correo}</div>
+                        <div className="text-gray-500 text-xs mt-0.5">{u.telefono || 'Sin teléfono'}</div>
+                      </td>
+
+                      <td className="p-4">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold border ${
+                          esRolEmbajador ? 'bg-green-50 text-green-700 border-green-200' : 'bg-purple-50 text-purple-700 border-purple-200'
+                        }`}>
+                          {u.roles?.nombre || 'Sin rol'}
+                        </span>
+                      </td>
+
+                      {/* RENDERS CONDICIONALES PARA LA TABLA */}
+                      {mostrarColumnasEmbajador && (
+                        <td className="p-4">
+                          {esRolEmbajador ? (
+                            <div className="flex flex-col">
+                              <span className="text-xs font-bold text-gray-700 flex items-center gap-1"><MapPin size={12}/> {datosEmbajador?.municipios?.nombre || 'Sin Asignar'}</span>
+                              <span className="text-xs text-[#00689D] font-medium truncate max-w-[150px] mt-0.5 flex items-center gap-1"><Folder size={12}/> {datosEmbajador?.proyectos_sociales?.nombre || 'Sin Proyecto'}</span>
+                            </div>
+                          ) : <span className="text-gray-300">-</span>}
+                        </td>
+                      )}
+
+                      {mostrarColumnasEmbajador && (
+                        <td className="p-4 text-center">
+                          {esRolEmbajador ? <span className="font-bold text-gray-700">{cantActividades}</span> : <span className="text-gray-300">-</span>}
+                        </td>
+                      )}
+                      
+                      <td className="p-4 text-center">
+                        <span className={`inline-flex items-center w-2.5 h-2.5 rounded-full mr-1.5 ${u.activo ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                        <span className="text-xs font-medium text-gray-700">{u.activo ? 'Activo' : 'Baja'}</span>
+                      </td>
+                      
+                      <td className="p-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <button onClick={() => handleEdit(u)} className="text-[#00689D] hover:bg-blue-50 p-2 rounded-md transition-colors" title="Editar">
+                            <Edit2 size={16} />
+                          </button>
+                          <button onClick={() => handleDelete(u.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-md transition-colors" title="Eliminar">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
