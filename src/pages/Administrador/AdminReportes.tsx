@@ -1936,7 +1936,7 @@
 // }
 import React, { useState, useEffect } from 'react';
 import { 
-  Inbox, FileText, Edit2, X, Save, Settings2, Plus, Calendar, Loader2, Filter, MapPin, Info, Globe, AlertTriangle
+  Inbox, FileText, Edit2, X, Save, Settings2, Plus, Calendar, Loader2, Filter, MapPin, Globe, AlertTriangle
 } from 'lucide-react';
 import { PDFViewer, Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 

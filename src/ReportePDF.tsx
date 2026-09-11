@@ -602,12 +602,6 @@ export const ReportePDF = ({ snapshot, categorias = [], acciones = [] }: any) =>
             const odsPrin = actividad.actividad_ods.find((o: any) => o.es_principal);
             if (odsPrin?.ods) odsText = `${odsPrin.ods.numero}. ${odsPrin.ods.nombre}`;
           }
-          let odsSecundariosText = '';
-          if (actividad.actividad_ods) {
-            const odsSec = actividad.actividad_ods.filter((o: any) => !o.es_principal);
-            odsSecundariosText = odsSec.map((o: any) => `${o.ods.numero}. ${o.ods.nombre}`).join(', ');
-          }
-
           // 3. Ubicación
           const municipioText = actividad.municipios?.nombre || actividad.domicilio?.municipio || actividad.municipio || '';
           const coloniaText = actividad.colonia || actividad.domicilio?.colonia || '';
