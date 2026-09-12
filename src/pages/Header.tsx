@@ -1,33 +1,72 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth'; 
 import { supabase } from '../lib/supabase'; 
-import { Menu, X, LogOut, User, LayoutDashboard, Settings, FileText, Home, Phone, Info, Users, Calendar } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
+// Mantenemos el logo local SOLO como plan de emergencia extrema si la BD falla o está vacía
 import Juventudes2030 from '../assets/LOGO HORIZONTAL JUVENTUDES 20230.png'; 
+
+interface Sistema {
+  nombre: string;
+  direccion: string;
+  correo: string;
+  telefono: string;
+  logotipos: {
+    principal?: string;
+    blanco?: string; 
+    isotipo?: string;
+  };
+}
 
 export default function Header() {
   const { isAuthenticated, userRole, loading } = useAuth();
   const navigate = useNavigate();
   
-  // Estado para controlar el menú en celulares
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [sistema, setSistema] = useState<Sistema | null>(null);
+  const [cargandoSistema, setCargandoSistema] = useState(true);
 
   const toggleMenu = () => setIsMobileMenuOpen(!isMobileMenuOpen);
   const closeMenu = () => setIsMobileMenuOpen(false);
 
-// ==========================================
-  // FUNCIÓN DE LOGOUT CORREGIDA
+  // ==========================================
+  // CARGAR CONFIGURACIÓN DEL SISTEMA
+  // ==========================================
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchSistema = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('sistemas')
+          .select('logotipos, nombre')
+          .eq('activo', true)
+          .maybeSingle();
+
+        if (error && error.code !== 'PGRST116') {
+          console.error("Error al cargar configuración del sistema:", error);
+        } else if (data && isMounted) {
+          setSistema(data as Sistema);
+        }
+      } catch (error) {
+        console.error("Error de conexión:", error);
+      } finally {
+        if (isMounted) setCargandoSistema(false);
+      }
+    };
+
+    fetchSistema();
+    return () => { isMounted = false; };
+  }, []);
+
+  // ==========================================
+  // FUNCIÓN DE LOGOUT
   // ==========================================
   const handleLogout = async () => {
     try {
       closeMenu();
-      
-      // 1. PRIMERO sacamos al usuario de la ruta protegida
-      // y lo mandamos a la página de inicio (ruta pública)
       navigate('/', { replace: true });
       
-      // 2. Una fracción de segundo después, matamos la sesión.
-      // Como ya no está en ProtectedRoute, no será redirigido al Login.
       setTimeout(async () => {
         await supabase.auth.signOut();
       }, 100);
@@ -36,61 +75,103 @@ export default function Header() {
       console.error("Error al cerrar sesión:", error);
     }
   };
+
+  // ==========================================
+  // OBTENER LOGO 100% DE LA BASE DE DATOS
+  // ==========================================
+  const getLogo = () => {
+    // Si la BD tiene un logo principal guardado, lo usa sin importar si hay sesión o rol.
+    if (sistema?.logotipos?.principal) {
+      return sistema.logotipos.principal;
+    }
+    // Solo si no hay nada en la BD, usa el archivo local
+    return Juventudes2030;
+  };
+
+  // ==========================================
+  // CLASES DE DISEÑO INSTITUCIONAL (Tipografía)
+  // ==========================================
+  // Letra pequeña, negrita, mayúscula y con espaciado (tracking) para un look muy formal
+  const navLinkClass = "group relative text-[15px] font-bold uppercase tracking-[0.15em] text-gray-500 hover:text-[#00689D] transition-colors py-2";
+  const underlineClass = "absolute -bottom-1 left-0 w-0 h-[2px] bg-[#00689D] transition-all duration-300 group-hover:w-full";
+
   return (
-    <header className="bg-blue-50 border-b border-blue-100 shadow-sm relative z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-50">
+      <div className="max-w-7xl mx-auto px-5 sm:px-8">
         <div className="flex justify-between items-center h-20">
           
-          {/* 1. LOGO (Siempre visible) */}
+          {/* 1. LOGO INSTITUCIONAL */}
           <div className="shrink-0 flex items-center">
-            <Link to="/" onClick={closeMenu} className="transition-transform hover:scale-105 duration-300">
-              <img src={Juventudes2030} alt="Logo de Juventudes 2030" className="w-48 sm:w-56 h-auto" />
+            <Link to="/" onClick={closeMenu} className="transition-opacity hover:opacity-80 duration-300">
+              {cargandoSistema ? (
+                <div className="w-48 h-10 bg-gray-100 animate-pulse rounded"></div>
+              ) : (
+                <img 
+                  src={getLogo()} 
+                  alt={sistema?.nombre || "Logotipo Institucional"} 
+                  className="w-60 sm:w-65 h-auto object-contain" 
+                />
+              )}
             </Link>
           </div>
 
           {/* ==========================================
-              MENÚ ESCRITORIO (Oculto en celulares)
+              MENÚ ESCRITORIO (Sin íconos, puro texto)
           ========================================== */}
-          <nav className="hidden md:flex items-center space-x-1">
+          <nav className="hidden md:flex items-center space-x-8">
             {loading ? (
-              <span className="text-gray-500 text-sm font-medium animate-pulse">Cargando...</span>
+              <span className="text-gray-400 text-xs font-bold uppercase tracking-widest animate-pulse">Cargando...</span>
             ) : !isAuthenticated ? (
-              /* --- VISTA NO LOGUEADO (Escritorio) --- */
-              <div className="flex items-center space-x-2">
-                <Link to="/" className="text-gray-700 hover:text-[#00689D] hover:bg-blue-100/50 px-3 py-2 rounded-md font-semibold transition-colors flex items-center gap-1.5"><Home size={18}/> Inicio</Link>
-                <a href="#acerca" className="text-gray-700 hover:text-[#00689D] hover:bg-blue-100/50 px-3 py-2 rounded-md font-semibold transition-colors flex items-center gap-1.5"><Info size={18}/> Acerca de</a>
-                <a href="#contacto" className="text-gray-700 hover:text-[#00689D] hover:bg-blue-100/50 px-3 py-2 rounded-md font-semibold transition-colors flex items-center gap-1.5"><Phone size={18}/> Contacto</a>
-                <div className="pl-4 ml-2 border-l border-blue-200">
-                  <Link to="/Login" className="bg-[#00689D] text-white px-5 py-2.5 rounded-lg font-bold hover:bg-[#00527A] shadow-md hover:shadow-lg transition-all flex items-center gap-2">
-                    <User size={18}/> Iniciar Sesión
+              
+              /* --- VISTA PÚBLICA --- */
+              <div className="flex items-center space-x-8">
+                <Link to="/" className={navLinkClass}>
+                  Inicio <span className={underlineClass}></span>
+                </Link>
+                <a href="#acerca" className={navLinkClass}>
+                  Acerca de <span className={underlineClass}></span>
+                </a>
+                <a href="#contacto" className={navLinkClass}>
+                  Contacto <span className={underlineClass}></span>
+                </a>
+                
+                {/* Botón de acceso institucional */}
+                <div className="pl-8 ml-2 border-l border-gray-200">
+                  <Link to="/Login" className="bg-[#04111f] text-white px-6 py-2.5 rounded text-[15px] font-bold uppercase tracking-[0.15em] hover:bg-[#00689D] hover:shadow-lg transition-all">
+                    Acceder
                   </Link>
                 </div>
               </div>
+
             ) : (
-              /* --- VISTA LOGUEADO (Escritorio) --- */
-              <div className="flex items-center space-x-2">
+              
+              /* --- VISTA LOGUEADO (Depende del Rol) --- */
+              <div className="flex items-center space-x-7">
                 
                 {userRole === 'Administrador' && (
                   <>
-                    <Link to="/administrador" className="text-gray-700 hover:text-[#00689D] hover:bg-blue-100/50 px-3 py-2 rounded-md font-semibold transition-colors flex items-center gap-1.5"><LayoutDashboard size={18}/> Dashboard</Link>
-                    <Link to="/administrador/usuarios" className="text-gray-700 hover:text-[#00689D] hover:bg-blue-100/50 px-3 py-2 rounded-md font-semibold transition-colors flex items-center gap-1.5"><Users size={18}/> Usuarios</Link>
-                    <Link to="/administrador/calendario" className="text-gray-700 hover:text-[#00689D] hover:bg-blue-100/50 px-3 py-2 rounded-md font-semibold transition-colors flex items-center gap-1.5"><Calendar size={18}/> Calendario</Link>
-                    <Link to="/administrador/reportes" className="text-gray-700 hover:text-[#00689D] hover:bg-blue-100/50 px-3 py-2 rounded-md font-semibold transition-colors flex items-center gap-1.5"><FileText size={18}/> Reportes</Link>
-                    <Link to="/administrador/catalogos" className="text-gray-700 hover:text-[#00689D] hover:bg-blue-100/50 px-3 py-2 rounded-md font-semibold transition-colors flex items-center gap-1.5"><Settings size={18}/> Configuración</Link>
+                    <Link to="/administrador" className={navLinkClass}>Dashboard <span className={underlineClass}></span></Link>
+                    <Link to="/administrador/usuarios" className={navLinkClass}>Usuarios <span className={underlineClass}></span></Link>
+                    <Link to="/administrador/calendario" className={navLinkClass}>Calendario <span className={underlineClass}></span></Link>
+                    <Link to="/administrador/reportes" className={navLinkClass}>Reportes <span className={underlineClass}></span></Link>
+                    <Link to="/administrador/catalogos" className={navLinkClass}>Configuración <span className={underlineClass}></span></Link>
                   </>
                 )}
 
                 {userRole === 'Embajador' && (
                   <>
-                    <Link to="/embajador/inicio" className="text-gray-700 hover:text-green-700 hover:bg-green-50 px-3 py-2 rounded-md font-semibold transition-colors flex items-center gap-1.5"><LayoutDashboard size={18}/> Mi Espacio</Link>
-                    <Link to="/embajador/actividades" className="text-gray-700 hover:text-green-700 hover:bg-green-50 px-3 py-2 rounded-md font-semibold transition-colors flex items-center gap-1.5"><FileText size={18}/> Mis Actividades</Link>
-                    <Link to="/embajador/reportes" className="text-gray-700 hover:text-green-700 hover:bg-green-50 px-3 py-2 rounded-md font-semibold transition-colors flex items-center gap-1.5"><Calendar size={18}/> Mis Reportes</Link>
+                    <Link to="/embajador/inicio" className={navLinkClass}>Mi Espacio <span className={underlineClass}></span></Link>
+                    <Link to="/embajador/actividades" className={navLinkClass}>Mis Actividades <span className={underlineClass}></span></Link>
+                    <Link to="/embajador/reportes" className={navLinkClass}>Mis Reportes <span className={underlineClass}></span></Link>
                   </>
                 )}
 
-                <div className="pl-4 ml-2 border-l border-blue-200">
-                  <button onClick={handleLogout} className="text-red-600 hover:text-white border-2 border-red-100 bg-red-50 hover:bg-red-600 hover:border-red-600 px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2">
-                    <LogOut size={18}/> Salir
+                <div className="pl-7 ml-2 border-l border-gray-200">
+                  <button 
+                    onClick={handleLogout} 
+                    className="text-[#04111f] hover:text-white hover:bg-red-600 border border-gray-200 hover:border-red-600 px-5 py-2 rounded text-[15px] font-bold uppercase tracking-[0.15em] transition-all"
+                  >
+                    Salir
                   </button>
                 </div>
               </div>
@@ -98,15 +179,15 @@ export default function Header() {
           </nav>
 
           {/* ==========================================
-              BOTÓN HAMBURGUESA (Solo en celulares)
+              BOTÓN HAMBURGUESA (Celulares)
           ========================================== */}
           <div className="md:hidden flex items-center">
             <button 
               onClick={toggleMenu}
-              className="p-2 rounded-md text-[#00689D] hover:bg-blue-100 focus:outline-none transition-colors"
-              aria-label="Abrir menú"
+              className="p-2 text-[#04111f] hover:bg-gray-50 transition-colors"
+              aria-label="Alternar menú"
             >
-              {isMobileMenuOpen ? <X size={28} /> : <Menu size={28} />}
+              {isMobileMenuOpen ? <X size={28} strokeWidth={1.5} /> : <Menu size={28} strokeWidth={1.5} />}
             </button>
           </div>
 
@@ -114,53 +195,55 @@ export default function Header() {
       </div>
 
       {/* ==========================================
-          MENÚ DESPLEGABLE MÓVIL
+          MENÚ DESPLEGABLE MÓVIL (Tipografía limpia)
       ========================================== */}
       {isMobileMenuOpen && (
-        <div className="md:hidden absolute top-full left-0 w-full bg-white shadow-xl border-t border-gray-100 animate-in slide-in-from-top-2 duration-200">
-          <div className="px-4 pt-2 pb-6 space-y-1">
+        <div className="md:hidden absolute top-full left-0 w-full bg-white shadow-2xl border-t border-gray-100 animate-in slide-in-from-top-2 duration-200">
+          <div className="px-6 py-6 space-y-4">
             
             {loading ? (
-              <div className="p-4 text-center text-gray-500">Cargando...</div>
+              <div className="p-4 text-center text-gray-400 text-xs uppercase tracking-widest">Cargando...</div>
             ) : !isAuthenticated ? (
-              /* --- VISTA NO LOGUEADO (Móvil) --- */
-              <div className="flex flex-col space-y-1 mt-2">
-                <Link to="/" onClick={closeMenu} className="text-gray-800 hover:text-[#00689D] hover:bg-blue-50 px-4 py-3 rounded-lg font-semibold flex items-center gap-3"><Home size={20} className="text-gray-400"/> Inicio</Link>
-                <a href="#acerca" onClick={closeMenu} className="text-gray-800 hover:text-[#00689D] hover:bg-blue-50 px-4 py-3 rounded-lg font-semibold flex items-center gap-3"><Info size={20} className="text-gray-400"/> Acerca de</a>
-                <a href="#contacto" onClick={closeMenu} className="text-gray-800 hover:text-[#00689D] hover:bg-blue-50 px-4 py-3 rounded-lg font-semibold flex items-center gap-3"><Phone size={20} className="text-gray-400"/> Contacto</a>
+              
+              /* --- VISTA PÚBLICA MÓVIL --- */
+              <div className="flex flex-col space-y-4">
+                <Link to="/" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Inicio</Link>
+                <a href="#acerca" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Acerca de</a>
+                <a href="#contacto" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Contacto</a>
                 
-                <div className="pt-4 mt-2 border-t border-gray-100">
-                  <Link to="/Login" onClick={closeMenu} className="bg-[#00689D] text-white w-full px-4 py-3.5 rounded-lg font-bold flex items-center justify-center gap-2 shadow-md">
-                    <User size={20}/> Iniciar Sesión
+                <div className="pt-6 mt-4 border-t border-gray-100">
+                  <Link to="/Login" onClick={closeMenu} className="bg-[#04111f] text-white w-full py-4 rounded text-xs font-bold uppercase tracking-widest text-center shadow-lg block">
+                    Acceder al Portal
                   </Link>
                 </div>
               </div>
+
             ) : (
-              /* --- VISTA LOGUEADO (Móvil) --- */
-              <div className="flex flex-col space-y-1 mt-2">
+              
+              /* --- VISTA LOGUEADA MÓVIL --- */
+              <div className="flex flex-col space-y-4">
                 
                 {userRole === 'Administrador' && (
                   <>
-                    <Link to="/administrador" onClick={closeMenu} className="text-gray-800 hover:text-[#00689D] hover:bg-blue-50 px-4 py-3 rounded-lg font-semibold flex items-center gap-3"><LayoutDashboard size={20} className="text-blue-500"/> Dashboard</Link>
-                    <Link to="/administrador/usuarios" onClick={closeMenu} className="text-gray-800 hover:text-[#00689D] hover:bg-blue-50 px-4 py-3 rounded-lg font-semibold flex items-center gap-3"><Users size={20} className="text-blue-500"/> Usuarios</Link>
-                    <Link to="/administrador/reportes" onClick={closeMenu} className="text-gray-800 hover:text-[#00689D] hover:bg-blue-50 px-4 py-3 rounded-lg font-semibold flex items-center gap-3"><FileText size={20} className="text-blue-500"/> Reportes</Link>
-                    <Link to="/administrador/catalogos" onClick={closeMenu} className="text-gray-800 hover:text-[#00689D] hover:bg-blue-50 px-4 py-3 rounded-lg font-semibold flex items-center gap-3"><Settings size={20} className="text-blue-500"/> Configuración</Link>
-                    <Link to="/administrador/calendario" onClick={closeMenu} className="text-gray-800 hover:text-[#00689D] hover:bg-blue-50 px-4 py-3 rounded-lg font-semibold flex items-center gap-3"><Calendar size={20} className="text-blue-500"/> Calendario</Link>
-                  
+                    <Link to="/administrador" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Dashboard</Link>
+                    <Link to="/administrador/usuarios" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Usuarios</Link>
+                    <Link to="/administrador/reportes" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Reportes</Link>
+                    <Link to="/administrador/catalogos" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Configuración</Link>
+                    <Link to="/administrador/calendario" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Calendario</Link>
                   </>
                 )}
 
                 {userRole === 'Embajador' && (
                   <>
-                    <Link to="/embajador/inicio" onClick={closeMenu} className="text-gray-800 hover:text-green-700 hover:bg-green-50 px-4 py-3 rounded-lg font-semibold flex items-center gap-3"><LayoutDashboard size={20} className="text-green-500"/> Mi Espacio</Link>
-                    <Link to="/embajador/actividades" onClick={closeMenu} className="text-gray-800 hover:text-green-700 hover:bg-green-50 px-4 py-3 rounded-lg font-semibold flex items-center gap-3"><FileText size={20} className="text-green-500"/> Mis Actividades</Link>
-                    <Link to="/embajador/reportes" onClick={closeMenu} className="text-gray-800 hover:text-green-700 hover:bg-green-50 px-4 py-3 rounded-lg font-semibold flex items-center gap-3"><Calendar size={20} className="text-green-500"/> Mis Reportes</Link>
+                    <Link to="/embajador/inicio" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Mi Espacio</Link>
+                    <Link to="/embajador/actividades" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Mis Actividades</Link>
+                    <Link to="/embajador/reportes" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Mis Reportes</Link>
                   </>
                 )}
 
-                <div className="pt-4 mt-2 border-t border-gray-100">
-                  <button onClick={handleLogout} className="w-full text-red-600 bg-red-50 hover:bg-red-100 px-4 py-3.5 rounded-lg font-bold flex items-center justify-center gap-2 transition-colors">
-                    <LogOut size={20}/> Cerrar Sesión
+                <div className="pt-6 mt-4 border-t border-gray-100">
+                  <button onClick={handleLogout} className="w-full text-red-600 bg-red-50 hover:bg-red-600 hover:text-white py-4 rounded text-xs font-bold uppercase tracking-widest text-center transition-colors">
+                    Cerrar Sesión
                   </button>
                 </div>
 
