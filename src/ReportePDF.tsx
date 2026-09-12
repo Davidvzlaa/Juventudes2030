@@ -535,6 +535,8 @@
 //   );
 // };
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 const styles = StyleSheet.create({
   page: { padding: 20, fontFamily: 'Helvetica', fontSize: 8 },
@@ -578,7 +580,6 @@ const styles = StyleSheet.create({
   bannerAnulado: { backgroundColor: '#fee2e2', padding: 4, borderBottomWidth: 1, borderColor: '#000', justifyContent: 'center' },
   textAnulado: { color: '#b91c1c', fontWeight: 'bold', textAlign: 'center', fontSize: 9 }
 });
-
 export const ReportePDF = ({ snapshot, categorias = [], acciones = [] }: any) => {
   if (!snapshot || !snapshot.actividades) return null;
 
@@ -602,16 +603,36 @@ export const ReportePDF = ({ snapshot, categorias = [], acciones = [] }: any) =>
             const odsPrin = actividad.actividad_ods.find((o: any) => o.es_principal);
             if (odsPrin?.ods) odsText = `${odsPrin.ods.numero}. ${odsPrin.ods.nombre}`;
           }
+          
           // 3. Ubicación
           const municipioText = actividad.municipios?.nombre || actividad.domicilio?.municipio || actividad.municipio || '';
           const coloniaText = actividad.colonia || actividad.domicilio?.colonia || '';
           const calleText = actividad.calle || actividad.domicilio?.calle || '';
           const lugarText = actividad.lugar || '';
 
-          // 4. Fechas y Horas
-          const fechaAjustada = actividad.fecha_evento?.split('T')[0] || '';
-          const horaInicio = actividad.hora_inicio?.slice(0, 5) || '';
-          const horaFin = actividad.hora_fin?.slice(0, 5) || '';
+          // 4. Fechas y Horas (Ajustado a formato AM/PM)
+          let fechaAjustada = '';
+          if (actividad.fecha_evento) {
+            const partes = actividad.fecha_evento.split('T')[0].split('-');
+            const fechaObj = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
+            fechaAjustada = format(fechaObj, "EEEE d 'de' MMMM 'del' yyyy", { locale: es });
+            fechaAjustada = fechaAjustada.charAt(0).toUpperCase() + fechaAjustada.slice(1);
+          }
+
+          const formatearHoraAMPM = (horaStr: string) => {
+            if (!horaStr) return '';
+            const partes = horaStr.split(':');
+            if (partes.length < 2) return horaStr;
+            let horas = parseInt(partes[0], 10);
+            const minutos = partes[1];
+            const ampm = horas >= 12 ? 'PM' : 'AM';
+            horas = horas % 12;
+            horas = horas ? horas : 12; // la hora 0 debe ser 12
+            return `${horas.toString().padStart(2, '0')}:${minutos} ${ampm}`;
+          };
+
+          const horaInicio = formatearHoraAMPM(actividad.hora_inicio?.slice(0, 5));
+          const horaFin = formatearHoraAMPM(actividad.hora_fin?.slice(0, 5));
 
           // 5. Sostenibilidad 
           let econ = actividad.sostenibilidad?.economico === true;
@@ -626,13 +647,14 @@ export const ReportePDF = ({ snapshot, categorias = [], acciones = [] }: any) =>
 
           // 6. Rango de Edad
           const rangoEdadText = actividad.rango_edad || actividad.rango_edad_beneficiarios || '';
+          const motivoText = actividad.motivo_anulacion ? actividad.motivo_anulacion.toUpperCase() : 'NO CONTABILIZA EN ESTADÍSTICAS';
 
           return (
             <View key={actividad.id || index} style={[styles.table, { marginBottom: 20 }]} wrap={false}>
               
               {actividad.anulada && (
                 <View style={styles.bannerAnulado}>
-                  <Text style={styles.textAnulado}>*** ACTIVIDAD ANULADA - NO CONTABILIZA EN ESTADÍSTICAS ***</Text>
+                  <Text style={styles.textAnulado}>*** ACTIVIDAD ANULADA - {motivoText} ***</Text>
                 </View>
               )}
 
@@ -719,7 +741,7 @@ export const ReportePDF = ({ snapshot, categorias = [], acciones = [] }: any) =>
                     </View>
                   </View>
 
-                  {/* LLENADO DINÁMICO DE BENEFICIARIOS CON SUMATORIA AL VUELO */}
+                  {/* LLENADO DINÁMICO DE BENEFICIARIOS */}
                   {categorias.map((cat: any, i: number) => {
                     const isLast = i === categorias.length - 1;
                     const esFilaTotal = cat.id === 99;
@@ -727,7 +749,6 @@ export const ReportePDF = ({ snapshot, categorias = [], acciones = [] }: any) =>
                     let calcH = 0, calcM = 0;
 
                     if (esFilaTotal) {
-                      // Sumar todos los demás que no sean 99
                       categorias.forEach((c: any) => {
                         if (c.id !== 99) {
                           const dbRow = actividad.actividad_beneficiarios?.find((b:any) => b.categoria_id === c.id);
@@ -737,7 +758,6 @@ export const ReportePDF = ({ snapshot, categorias = [], acciones = [] }: any) =>
                         }
                       });
                     } else {
-                      // Leer la fila actual
                       const dbRow = actividad.actividad_beneficiarios?.find((b:any) => b.categoria_id === cat.id);
                       const uiRow = actividad.beneficiarios?.[cat.id];
                       calcH = parseInt(dbRow?.hombres || uiRow?.hombres || '0', 10);
@@ -765,13 +785,8 @@ export const ReportePDF = ({ snapshot, categorias = [], acciones = [] }: any) =>
                   <View style={[styles.cellHeaderCenter, styles.noBorderRight, { borderBottomWidth: 1 }]}><Text>Tipo de acción</Text></View>
                   
                   {acciones.map((acc: any) => {
-                    let cantX = '';
-                    if (actividad.acciones && actividad.acciones[acc.nombre]) {
-                      cantX = 'X';
-                    } else if (actividad.actividad_acciones) {
-                      const dbAct = actividad.actividad_acciones.find((a:any) => a.tipo_accion_id === acc.id);
-                      if (dbAct) cantX = 'X';
-                    }
+                    const isSelected = actividad.actividad_acciones?.some((a:any) => a.tipo_accion_id === acc.id);
+                    const cantX = isSelected ? 'X' : '';
 
                     return (
                       <View key={acc.id} style={styles.row}>
@@ -783,12 +798,8 @@ export const ReportePDF = ({ snapshot, categorias = [], acciones = [] }: any) =>
                     );
                   })}
                   
-                  <View style={[styles.cellHeaderCenter, styles.noBorderRight, { borderBottomWidth: 1, backgroundColor: '#f0f0f0' }]}>
-                    <Text>Rango de edad de los beneficiarios</Text>
-                  </View>
-                  <View style={[styles.colContent, styles.noBorderRight, { padding: 5, flex: 1, minHeight: 40 }]}>
-                    <Text style={styles.textCenter}>{rangoEdadText}</Text>
-                  </View>
+                  <View style={[styles.cellHeaderCenter, styles.noBorderRight, { borderBottomWidth: 1, backgroundColor: '#f0f0f0' }]}><Text>Rango de edad de los beneficiarios</Text></View>
+                  <View style={[styles.colContent, styles.noBorderRight, { padding: 5, flex: 1, minHeight: 40 }]}><Text style={styles.textCenter}>{rangoEdadText}</Text></View>
                 </View>
 
               </View>
@@ -798,18 +809,22 @@ export const ReportePDF = ({ snapshot, categorias = [], acciones = [] }: any) =>
               <View style={[styles.row, { minHeight: 60, padding: 5, alignItems: 'flex-start' }]}>
                 <Text>{actividad.descripcion}</Text>
               </View>
-
-              {/* ================= EVIDENCIAS ================= */}
-              <Text style={[styles.sectionHeader, { borderBottomWidth: 0 }]}>Evidencias 4 fotos</Text>
+{/* ================= EVIDENCIAS ================= */}
+              <Text style={[styles.sectionHeader, { borderBottomWidth: 0 }]}>Evidencias</Text>
               <View style={[styles.evidenciasContainer, { borderTopWidth: 1, borderColor: '#000' }]}>
-                {[0, 1, 2, 3].map((index) => {
-                  const evidencia = actividad.evidencias && actividad.evidencias[index]; 
-                  return evidencia ? (
+                {actividad.evidencias && actividad.evidencias.length > 0 ? (
+                  // Si hay evidencias, solo dibujamos las que existen (sin cuadros grises extra)
+                  actividad.evidencias.map((evidencia: any, index: number) => (
                     <Image key={index} src={evidencia.url_archivo || evidencia.url} style={styles.foto} />
-                  ) : (
-                    <View key={index} style={styles.foto} />
-                  );
-                })}
+                  ))
+                ) : (
+                  // Si no hay evidencias, mostramos la leyenda centrada
+                  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <Text style={{ color: '#666', fontSize: 10, fontStyle: 'italic' }}>
+                      El embajador no adjuntó evidencias para esta actividad.
+                    </Text>
+                  </View>
+                )}
               </View>
 
             </View>
