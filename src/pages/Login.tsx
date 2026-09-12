@@ -20,13 +20,24 @@ const OdsColorBar = () => {
     </div>
   );
 };
-
+interface Sistema {
+  nombre: string;
+  direccion: string;
+  correo: string;
+  telefono: string;
+  logotipos: {
+    principal?: string;
+    blanco?: string; 
+    isotipo?: string;
+  };
+}
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false); 
-  
+  const [sistema, setSistema] = useState<Sistema | null>(null);
+  const [cargandoSistema, setCargandoSistema] = useState(true);
   const navigate = useNavigate();
   const { isAuthenticated, userRole } = useAuth();
 
@@ -44,7 +55,35 @@ export default function Login() {
       }
     }
   }, [isAuthenticated, userRole, navigate]);
+// ==========================================
+  // CARGAR CONFIGURACIÓN DEL SISTEMA (LOGO)
+  // ==========================================
+  useEffect(() => {
+    let isMounted = true;
 
+    const fetchSistema = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('sistemas')
+          .select('logotipos')
+          .eq('activo', true)
+          .maybeSingle(); // Usamos maybeSingle para evitar el error 406 si está vacío
+
+        if (error) {
+          console.error("Error al cargar configuración del sistema:", error);
+        } else if (data && isMounted) {
+          setSistema(data as Sistema);
+        }
+      } catch (error) {
+        console.error("Error de conexión:", error);
+      } finally {
+        if (isMounted) setCargandoSistema(false);
+      }
+    };
+
+    fetchSistema();
+    return () => { isMounted = false; };
+  }, []);
   // ==========================================
   // FUNCIÓN PARA ENVIAR EL FORMULARIO
   // ==========================================
@@ -62,6 +101,14 @@ export default function Login() {
       setError('Correo o contraseña incorrectos. Verifica tus credenciales.');
       setIsLoading(false);
     }
+  };
+    const getLogo = () => {
+    // Si la BD tiene un logo principal guardado, lo usa sin importar si hay sesión o rol.
+    if (sistema?.logotipos?.principal) {
+      return sistema.logotipos.principal;
+    }
+    // Solo si no hay nada en la BD, usa el archivo local
+    return Juventudes2030;
   };
 
   return (
@@ -136,8 +183,8 @@ export default function Login() {
           <div className="text-center">
             <nav className="flex justify-center items-center mb-4 transition-transform hover:scale-105 duration-300">
               <Link to="/">
-                <link rel="preload" href={Juventudes2030} as="image" />
-                <img src={Juventudes2030} alt="Logo de Juventudes 2030" className="mx-auto w-80 h-auto cursor-pointer" />
+                <link rel="preload" href={getLogo()} as="image" />
+                <img src={getLogo()} alt="Logo de Juventudes 2030" className="mx-auto w-80 h-auto cursor-pointer" />
               </Link>
             </nav>
             <p className="text-sm text-gray-500 mt-3 font-medium">Ingresa tus credenciales para acceder</p>
