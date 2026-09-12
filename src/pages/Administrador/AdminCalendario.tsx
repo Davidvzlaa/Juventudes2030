@@ -8,7 +8,7 @@ import { es } from 'date-fns/locale';
 import { 
   ChevronLeft, ChevronRight, MapPin, Clock, Calendar as CalendarIcon, 
   Info, X, LayoutGrid, List, Columns, User, Users, Edit2, 
-  PlusCircle, Target, Activity as ActivityIcon, Trash2, Ban, Filter
+  PlusCircle, Trash2, Ban, Filter
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';

@@ -1,6 +1,5 @@
 import { useInView } from "react-intersection-observer";
 import { ArrowRight } from "lucide-react";
-import Juventudes2030 from "../../assets/LOGO JUVENTUDES 20230.png";
 import EMB2DA from "../../assets/EMB2DA.jpg";
 import { ods } from "../../data";
 

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -69,15 +68,7 @@ export default function ReportePDF({ snapshot, categorias = [], acciones = [] }:
           const esPropia = actividad.creado_por_usuario_id === snapshot.usuario_id;
           const tipoActividadText = esPropia ? 'Propia' : 'Colaborativa';
 
-          // 2. Nombre real de la acción
-          let nombreActividadReal = actividad.tipo_actividad || 'No especificada'; 
-          if (actividad.actividad_acciones && actividad.actividad_acciones.length > 0) {
-             const idAccion = actividad.actividad_acciones[0].tipo_accion_id;
-             const accionEncontrada = acciones.find((a:any) => a.id === idAccion);
-             if (accionEncontrada) nombreActividadReal = accionEncontrada.nombre;
-          }
-
-          // 3. ODS Principal y Complementarios
+           // 2. ODS Principal y Complementarios
           let odsText = actividad.ods_principal || '';
           let odsComplementariosText = 'Ninguno'; // Texto por defecto
 
@@ -97,13 +88,13 @@ export default function ReportePDF({ snapshot, categorias = [], acciones = [] }:
             }
           }
           
-          // 4. Ubicación
+          // 3. Ubicación
           const municipioText = actividad.municipios?.nombre || actividad.domicilio?.municipio || actividad.municipio || '';
           const coloniaText = actividad.colonia || actividad.domicilio?.colonia || '';
           const calleText = actividad.calle || actividad.domicilio?.calle || '';
           const lugarText = actividad.lugar || '';
 
-          // 5. Fechas y Horas (Ajustado a formato AM/PM)
+          // 4. Fechas y Horas (Ajustado a formato AM/PM)
           let fechaAjustada = '';
           if (actividad.fecha_evento) {
             const partes = actividad.fecha_evento.split('T')[0].split('-');
@@ -127,15 +118,14 @@ export default function ReportePDF({ snapshot, categorias = [], acciones = [] }:
           const horaInicio = formatearHoraAMPM(actividad.hora_inicio?.slice(0, 5));
           const horaFin = formatearHoraAMPM(actividad.hora_fin?.slice(0, 5));
 
-          // 6. Sostenibilidad 
-          let econ = false, soc = false, amb = false;
+          // 5. Sostenibilidad
+          let soc = false, amb = false;
           if (actividad.actividad_sostenibilidad) {
-            econ = actividad.actividad_sostenibilidad.some((s:any) => s.area_id === 1);
             soc = actividad.actividad_sostenibilidad.some((s:any) => s.area_id === 2);
             amb = actividad.actividad_sostenibilidad.some((s:any) => s.area_id === 3);
           }
 
-          // 7. Rango de Edad y Motivo Anulación
+          // 6. Rango de Edad y Motivo Anulación
           const rangoEdadText = actividad.rango_edad || actividad.rango_edad_beneficiarios || '';
           const motivoText = actividad.motivo_anulacion ? actividad.motivo_anulacion.toUpperCase() : 'NO CONTABILIZA EN ESTADÍSTICAS';
 

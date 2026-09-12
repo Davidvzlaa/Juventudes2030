@@ -720,7 +720,7 @@
 //     </div>
 //   );
 // }
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import { type DateRange } from "react-day-picker";
@@ -848,10 +848,10 @@ export default function ExplorarActividades() {
   useEffect(() => {
     const canal = supabase
       .channel('vigilante-bd')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'actividades' }, (payload) => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'actividades' }, () => {
         setRefreshTrigger(prev => prev + 1);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'actividad_ods' }, (payload) => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'actividad_ods' }, () => {
         setRefreshTrigger(prev => prev + 1);
       })
       .subscribe();
