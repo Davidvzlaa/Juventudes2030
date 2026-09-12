@@ -1936,9 +1936,12 @@
 // }
 import React, { useState, useEffect } from 'react';
 import { 
-  Inbox, FileText, Edit2, X, Save, Settings2, Plus, Calendar, Loader2, Filter, MapPin, Globe, AlertTriangle
+  Inbox, FileText, Edit2, X, Save, Settings2, Plus, Calendar, Loader2, Filter, MapPin, Globe, AlertTriangle, RefreshCw, Lock
 } from 'lucide-react';
 import { PDFViewer, Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
+
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 import { supabase } from '@/lib/supabase'; 
 
@@ -1980,6 +1983,13 @@ const ReportePDF = ({ snapshot, categorias = [], acciones = [] }: any) => {
           const esPropia = actividad.creado_por_usuario_id === snapshot.usuario_id;
           const tipoActividadText = esPropia ? 'Propia' : 'Colaborativa';
 
+          let nombreActividadReal = actividad.tipo_actividad || 'No especificada'; 
+          if (actividad.actividad_acciones && actividad.actividad_acciones.length > 0) {
+             const idAccion = actividad.actividad_acciones[0].tipo_accion_id;
+             const accionEncontrada = acciones.find((a:any) => a.id === idAccion);
+             if (accionEncontrada) nombreActividadReal = accionEncontrada.nombre;
+          }
+
           let odsText = actividad.ods_principal || '';
           if (!odsText && actividad.actividad_ods) {
             const odsPrin = actividad.actividad_ods.find((o: any) => o.es_principal);
@@ -1991,7 +2001,14 @@ const ReportePDF = ({ snapshot, categorias = [], acciones = [] }: any) => {
           const calleText = actividad.calle || actividad.domicilio?.calle || '';
           const lugarText = actividad.lugar || '';
 
-          const fechaAjustada = actividad.fecha_evento?.split('T')[0] || '';
+          let fechaAjustada = '';
+          if (actividad.fecha_evento) {
+            const partes = actividad.fecha_evento.split('T')[0].split('-');
+            const fechaObj = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
+            fechaAjustada = format(fechaObj, "EEEE d 'de' MMMM 'del' yyyy", { locale: es });
+            fechaAjustada = fechaAjustada.charAt(0).toUpperCase() + fechaAjustada.slice(1);
+          }
+
           const horaInicio = actividad.hora_inicio?.slice(0, 5) || '';
           const horaFin = actividad.hora_fin?.slice(0, 5) || '';
 
@@ -2006,8 +2023,6 @@ const ReportePDF = ({ snapshot, categorias = [], acciones = [] }: any) => {
           }
 
           const rangoEdadText = actividad.rango_edad || actividad.rango_edad_beneficiarios || '';
-
-          // LÓGICA DEL MOTIVO DE ANULACIÓN
           const motivoText = actividad.motivo_anulacion ? actividad.motivo_anulacion.toUpperCase() : 'NO CONTABILIZA EN ESTADÍSTICAS';
 
           return (
@@ -2029,7 +2044,7 @@ const ReportePDF = ({ snapshot, categorias = [], acciones = [] }: any) => {
               
               <View style={styles.row}>
                 <View style={[styles.cellHeaderCenter, styles.w15]}><Text>Actividad</Text></View>
-                <View style={[styles.cellData, styles.w35]}><Text>{tipoActividadText}</Text></View>
+                <View style={[styles.cellData, styles.w35]}><Text>{nombreActividadReal}</Text></View>
                 <View style={[styles.cellHeaderCenter, styles.w15]}><Text>Inicio (Hora)</Text></View>
                 <View style={[styles.cellData, styles.w10]}><Text>{horaInicio}</Text></View>
                 <View style={[styles.cellHeaderCenter, styles.w15]}><Text>Fin (Hora)</Text></View>
@@ -2134,10 +2149,10 @@ const ReportePDF = ({ snapshot, categorias = [], acciones = [] }: any) => {
                 </View>
 
                 <View style={[styles.w40, { flexDirection: 'column' }]}>
-                  <View style={[styles.cellHeaderCenter, styles.noBorderRight, { borderBottomWidth: 1 }]}><Text>Tipo de acción</Text></View>
+                  <View style={[styles.cellHeaderCenter, styles.noBorderRight, { borderBottomWidth: 1 }]}><Text>Naturaleza de la Actividad</Text></View>
                   
                   {acciones.map((acc: any) => {
-                    const isSelected = actividad.tipo_actividad === acc.nombre || actividad.actividad_acciones?.some((a:any) => a.tipo_accion_id === acc.id);
+                    const isSelected = actividad.actividad_acciones?.some((a:any) => a.tipo_accion_id === acc.id);
                     const cantX = isSelected ? 'X' : '';
 
                     return (
@@ -2150,8 +2165,9 @@ const ReportePDF = ({ snapshot, categorias = [], acciones = [] }: any) => {
                     );
                   })}
                   
-                  <View style={[styles.cellHeaderCenter, styles.noBorderRight, { borderBottomWidth: 1, backgroundColor: '#f0f0f0' }]}><Text>Rango de edad de los beneficiarios</Text></View>
-                  <View style={[styles.colContent, styles.noBorderRight, { padding: 5, flex: 1, minHeight: 40 }]}><Text style={styles.textCenter}>{rangoEdadText}</Text></View>
+                  {/* SE CAMBIÓ A PROPIA / COLABORATIVA COMO PEDISTE */}
+                  <View style={[styles.cellHeaderCenter, styles.noBorderRight, { borderBottomWidth: 1, backgroundColor: '#f0f0f0' }]}><Text>Tipo de Acción</Text></View>
+                  <View style={[styles.colContent, styles.noBorderRight, { padding: 5, flex: 1, minHeight: 40 }]}><Text style={styles.textCenterBold}>{tipoActividadText}</Text></View>
                 </View>
 
               </View>
@@ -2193,13 +2209,12 @@ export default function AdminReportes() {
   const [actividadEnEdicion, setActividadEnEdicion] = useState<any>(null);
   const [guardando, setGuardando] = useState(false);
 
-  // NUEVO: ESTADO PARA EL MODAL DE ANULACIÓN
   const [modalAnular, setModalAnular] = useState<{ visible: boolean; actividadId: number | null; comentario: string }>({
     visible: false, actividadId: null, comentario: ''
   });
 
   const [filtroEstado, setFiltroEstado] = useState<'Todos' | 'Enviado' | 'Borrador'>('Enviado'); 
-  const [filtroMes, setFiltroMes] = useState<string>('Todos');
+  const [filtroMes, setFiltroMes] = useState<string>('Todos'); // Ahora usará formato "mes-anio"
   const [filtroMunicipio, setFiltroMunicipio] = useState<string>('Todos');
   
   const [categoriasDB, setCategoriasDB] = useState<any[]>([]);
@@ -2207,10 +2222,17 @@ export default function AdminReportes() {
   const [odsDB, setOdsDB] = useState<any[]>([]); 
   const [municipiosList, setMunicipiosList] = useState<any[]>([]);
 
+  // ESTADO PARA LISTA DINÁMICA DE MESES HABILITADOS
+  const [mesesDisponibles, setMesesDisponibles] = useState<{mes: number, anio: number, nombre: string}[]>([]);
+
   const [showHabilitarModal, setShowHabilitarModal] = useState(false);
   const [nuevoMes, setNuevoMes] = useState(new Date().getMonth() + 1);
   const [nuevoAnio, setNuevoAnio] = useState(new Date().getFullYear());
   const [procesandoMes, setProcesandoMes] = useState(false);
+
+  const [showDeshabilitarModal, setShowDeshabilitarModal] = useState(false);
+  const [mesDeshabilitar, setMesDeshabilitar] = useState<string>('');
+  const [procesandoDeshabilitar, setProcesandoDeshabilitar] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -2225,9 +2247,7 @@ export default function AdminReportes() {
           .order('anio', { ascending: false }).order('mes', { ascending: false })
       ]);
 
-      if (catRes.data) {
-        setCategoriasDB([...catRes.data, { id: 99, nombre: 'Total Beneficiarios' }]);
-      }
+      if (catRes.data) setCategoriasDB([...catRes.data, { id: 99, nombre: 'Total Beneficiarios' }]);
       if (accRes.data) setAccionesDB(accRes.data);
       if (odsRes.data) setOdsDB(odsRes.data);
       if (munRes.data) setMunicipiosList(munRes.data);
@@ -2246,6 +2266,16 @@ export default function AdminReportes() {
           actividades: []
         }));
         setReportes(formateados);
+
+        // EXTRAER MESES ÚNICOS PARA EL FILTRO Y MODAL
+        const unicos = new Map();
+        repRes.data.forEach((r: any) => {
+          const key = `${r.mes}-${r.anio}`;
+          if (!unicos.has(key)) {
+            unicos.set(key, { mes: r.mes, anio: r.anio, nombre: `${MESES[(r.mes || 1) - 1]} ${r.anio}` });
+          }
+        });
+        setMesesDisponibles(Array.from(unicos.values()));
       }
     } catch (error) {
       console.error("Error cargando datos:", error);
@@ -2296,8 +2326,35 @@ export default function AdminReportes() {
     }
   };
 
+  const handleDeshabilitarMes = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mesDeshabilitar) return alert("Selecciona un mes de la lista");
+    setProcesandoDeshabilitar(true);
+    try {
+      const [mesSeleccionado, anioSeleccionado] = mesDeshabilitar.split('-').map(Number);
+      
+      // Actualizar todos los reportes de ese mes que sean Borrador a Deshabilitado
+      const { error } = await supabase
+        .from('reportes')
+        .update({ estado: 'Deshabilitado' })
+        .eq('mes', mesSeleccionado)
+        .eq('anio', anioSeleccionado)
+        .in('estado', ['Borrador', 'Rechazada']); 
+      
+      if (error) throw error;
+
+      alert("Mes deshabilitado con éxito. Los embajadores ya no podrán enviar reportes para este periodo.");
+      setShowDeshabilitarModal(false);
+      fetchData(); // Refrescar la lista de reportes para que refleje el nuevo estado
+    } catch (error: any) {
+      alert("Error al deshabilitar el mes: " + error.message);
+    } finally {
+      setProcesandoDeshabilitar(false);
+    }
+  };
+
   const seleccionarReporte = async (reporte: any) => {
-    setReporteSeleccionado(reporte);
+    setReporteSeleccionado(reporte); 
     
     const strMes = String(reporte.mes).padStart(2, '0');
     const ultimoDia = new Date(reporte.anio, reporte.mes, 0).getDate();
@@ -2325,7 +2382,6 @@ export default function AdminReportes() {
       return;
     }
 
-    // EXTRAER COMENTARIOS Y ESTADO DE VALIDACIÓN
     const { data: repActs } = await supabase
       .from('reporte_act')
       .select('actividad_id, estado_validacion, comentarios_admin')
@@ -2334,7 +2390,7 @@ export default function AdminReportes() {
     const validacionMap = new Map();
     repActs?.forEach(ra => {
       validacionMap.set(ra.actividad_id, {
-        anulada: ra.estado_validacion === 'Rechazada', // O 'Anulada' según tu constraint
+        anulada: ra.estado_validacion === 'Rechazada',
         comentario: ra.comentarios_admin || ''
       });
     });
@@ -2355,9 +2411,15 @@ export default function AdminReportes() {
 
       const validacionData = validacionMap.get(act.id) || { anulada: false, comentario: '' };
 
+      let tipoAccionIdReal = '';
+      if (act.actividad_acciones && act.actividad_acciones.length > 0) {
+        tipoAccionIdReal = act.actividad_acciones[0].tipo_accion_id.toString();
+      }
+
       return {
         ...act,
-        rango_edad: act.rango_edad_beneficiarios,
+        tipo_accion_id_real: tipoAccionIdReal,
+        rango_edad: act.rango_edad_beneficiarios || act.rango_edad,
         domicilio: { calle: act.calle || '', colonia: act.colonia || '', municipio: act.municipio_id || '' },
         beneficiarios: beneficiariosObj,
         ods_seleccionados: odsSeleccionados,
@@ -2371,15 +2433,10 @@ export default function AdminReportes() {
     setReporteSeleccionado({ ...reporte, actividades: actividadesCompletas });
   };
 
-  // ==========================================
-  // LÓGICA DE ANULACIÓN (CON COMENTARIO)
-  // ==========================================
   const toggleAnularActividad = (actividadId: number, anuladaActual: boolean) => {
     if (!anuladaActual) {
-      // SI NO ESTÁ ANULADA -> ABRIR MODAL PARA PEDIR MOTIVO
       setModalAnular({ visible: true, actividadId, comentario: '' });
     } else {
-      // SI YA ESTÁ ANULADA -> RESTAURARLA DIRECTAMENTE (Y LIMPIAR COMENTARIO)
       procesarCambioEstado(actividadId, 'Aprobada', null);
     }
   };
@@ -2387,7 +2444,6 @@ export default function AdminReportes() {
   const procesarCambioEstado = async (actividadId: number, nuevoEstadoVal: string, comentario: string | null) => {
     if (!reporteSeleccionado) return;
     
-    // Si estamos anulando, exigimos un motivo
     if (nuevoEstadoVal === 'Rechazada' && !comentario?.trim()) {
       return alert("Debes ingresar un motivo para anular la actividad.");
     }
@@ -2398,14 +2454,13 @@ export default function AdminReportes() {
         reporte_id: reporteSeleccionado.id,
         actividad_id: actividadId,
         estado_validacion: nuevoEstadoVal,
-        comentarios_admin: comentario, // Se guarda el motivo o null si se aprueba
+        comentarios_admin: comentario, 
         validado_por_usuario_id: authData.user?.id,
         fecha_validacion: new Date().toISOString()
       }, { onConflict: 'reporte_id,actividad_id' });
 
       if (error) throw error;
 
-      // Actualizar vista local
       const reporteActualizado = {
         ...reporteSeleccionado,
         actividades: reporteSeleccionado.actividades.map((act: any) => 
@@ -2425,9 +2480,6 @@ export default function AdminReportes() {
     }
   };
 
-  // ==========================================
-  // HANDLERS DEL FORMULARIO DE EDICIÓN PARA ADMIN
-  // ==========================================
   const handleChangeSimple = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setActividadEnEdicion({ ...actividadEnEdicion, [name]: value });
@@ -2472,9 +2524,18 @@ export default function AdminReportes() {
     try {
       const actId = actividadEnEdicion.id;
 
+      const tipoAccionIdInt = parseInt(actividadEnEdicion.tipo_accion_id_real, 10);
+      const tipoObj = accionesDB.find(a => a.id === tipoAccionIdInt);
+
+      let odsPrincipalText = '';
+      if (actividadEnEdicion.ods_seleccionados && actividadEnEdicion.ods_seleccionados.length > 0) {
+        const odsPrin = odsDB.find(o => o.id === actividadEnEdicion.ods_seleccionados[0]);
+        if (odsPrin) odsPrincipalText = `${odsPrin.numero}. ${odsPrin.nombre}`;
+      }
+
       const actividadData = {
         nombre: actividadEnEdicion.nombre,
-        tipo_actividad: actividadEnEdicion.tipo_actividad,
+        tipo_actividad: tipoObj ? tipoObj.nombre : null, 
         fecha_evento: actividadEnEdicion.fecha_evento,
         hora_inicio: actividadEnEdicion.hora_inicio || null,
         hora_fin: actividadEnEdicion.hora_fin || null,
@@ -2483,6 +2544,8 @@ export default function AdminReportes() {
         calle: actividadEnEdicion.domicilio?.calle,
         colonia: actividadEnEdicion.domicilio?.colonia,
         rango_edad_beneficiarios: actividadEnEdicion.rango_edad,
+        rango_edad: actividadEnEdicion.rango_edad,
+        ods_principal: odsPrincipalText,
         descripcion: actividadEnEdicion.descripcion,
         fecha_actualizacion: new Date().toISOString()
       };
@@ -2490,28 +2553,42 @@ export default function AdminReportes() {
       const { error: errAct } = await supabase.from('actividades').update(actividadData).eq('id', actId);
       if (errAct) throw errAct;
 
+      await supabase.from('actividad_beneficiarios').delete().eq('actividad_id', actId);
       if (actividadEnEdicion.beneficiarios) {
+        const benefPayload = [];
         for (const [catIdStr, valores] of Object.entries(actividadEnEdicion.beneficiarios)) {
           const catId = Number(catIdStr);
           if (catId === 99) continue; 
           
           const val: any = valores;
-          await supabase.from('actividad_beneficiarios').upsert({
-            actividad_id: actId, categoria_id: catId,
-            hombres: parseInt(val.hombres || '0', 10), mujeres: parseInt(val.mujeres || '0', 10), total: parseInt(val.hombres || '0', 10) + parseInt(val.mujeres || '0', 10),
-            actualizado_en: new Date().toISOString()
-          }, { onConflict: 'actividad_id,categoria_id' }); 
+          const h = parseInt(val.hombres || '0', 10);
+          const m = parseInt(val.mujeres || '0', 10);
+          
+          if (h > 0 || m > 0) {
+            benefPayload.push({
+              actividad_id: actId, 
+              categoria_id: catId,
+              hombres: h, 
+              mujeres: m, 
+              total: h + m,
+              actualizado_en: new Date().toISOString()
+            });
+          }
+        }
+        if (benefPayload.length > 0) {
+          await supabase.from('actividad_beneficiarios').insert(benefPayload);
         }
       }
 
       await supabase.from('actividad_acciones').delete().eq('actividad_id', actId);
-      if (actividadEnEdicion.tipo_actividad) {
-        const tipoObj = accionesDB.find(a => a.nombre === actividadEnEdicion.tipo_actividad);
-        if (tipoObj) {
-          await supabase.from('actividad_acciones').insert({
-            actividad_id: actId, tipo_accion_id: tipoObj.id, cantidad: 1, creado_en: new Date().toISOString()
-          });
-        }
+      if (!isNaN(tipoAccionIdInt)) {
+        await supabase.from('actividad_acciones').insert({
+          actividad_id: actId, 
+          tipo_accion_id: tipoAccionIdInt, 
+          cantidad: 1, 
+          creado_en: new Date().toISOString(),
+          actualizado_en: new Date().toISOString()
+        });
       }
 
       const areasSeleccionadas = new Set<number>();
@@ -2529,8 +2606,9 @@ export default function AdminReportes() {
       });
 
       await supabase.from('actividad_sostenibilidad').delete().eq('actividad_id', actId);
-      for (const areaId of Array.from(areasSeleccionadas)) {
-        await supabase.from('actividad_sostenibilidad').insert({ actividad_id: actId, area_id: areaId, creado_en: new Date().toISOString() });
+      const sostPayload = Array.from(areasSeleccionadas).map(areaId => ({ actividad_id: actId, area_id: areaId, creado_en: new Date().toISOString() }));
+      if (sostPayload.length > 0) {
+        await supabase.from('actividad_sostenibilidad').insert(sostPayload);
       }
 
       await supabase.from('actividad_ods').delete().eq('actividad_id', actId);
@@ -2543,7 +2621,7 @@ export default function AdminReportes() {
 
       alert('Actividad modificada exitosamente');
       setActividadEnEdicion(null);
-      seleccionarReporte(reporteSeleccionado); // Refresca en vivo
+      seleccionarReporte(reporteSeleccionado); 
       
     } catch (error: any) {
       console.error(error);
@@ -2558,9 +2636,10 @@ export default function AdminReportes() {
     actividades: ocultarAnuladasPDF ? reporteSeleccionado.actividades.filter((a: any) => !a.anulada) : reporteSeleccionado.actividades
   } : null;
 
+  // LÓGICA DE FILTRADO CON FORMATO DINÁMICO "MES-AÑO"
   const reportesFiltrados = reportes.filter(r => {
     const matchEstado = filtroEstado === 'Todos' || r.estado === filtroEstado;
-    const matchMes = filtroMes === 'Todos' || String(r.mes) === filtroMes;
+    const matchMes = filtroMes === 'Todos' || `${r.mes}-${r.anio}` === filtroMes;
     const matchMunicipio = filtroMunicipio === 'Todos' || r.municipio_nombre === filtroMunicipio;
     return matchEstado && matchMes && matchMunicipio;
   });
@@ -2568,7 +2647,7 @@ export default function AdminReportes() {
   return (
     <div className="flex flex-col h-[calc(100vh-100px)] relative">
       
-      {/* ================= MODAL DE ANULACIÓN (NUEVO) ================= */}
+      {/* ================= MODAL DE ANULACIÓN ================= */}
       {modalAnular.visible && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
@@ -2633,9 +2712,9 @@ export default function AdminReportes() {
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-gray-600 mb-1">Tipo de Acción Principal</label>
-                      <select name="tipo_actividad" value={actividadEnEdicion.tipo_actividad || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:border-[#00689D]">
+                      <select name="tipo_accion_id_real" value={actividadEnEdicion.tipo_accion_id_real || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:border-[#00689D]">
                         <option value="">-- Selecciona --</option>
-                        {accionesDB.map(tipo => <option key={tipo.id} value={tipo.nombre}>{tipo.nombre}</option>)}
+                        {accionesDB.map(tipo => <option key={tipo.id} value={tipo.id}>{tipo.nombre}</option>)}
                       </select>
                     </div>
                   </div>
@@ -2647,11 +2726,11 @@ export default function AdminReportes() {
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-gray-600 mb-1">Inicio</label>
-                      <input type="time" name="hora_inicio" value={actividadEnEdicion.hora_inicio || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm"/>
+                      <input type="time" name="hora_inicio" value={actividadEnEdicion.hora_inicio?.slice(0,5) || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm"/>
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-gray-600 mb-1">Fin</label>
-                      <input type="time" name="hora_fin" value={actividadEnEdicion.hora_fin || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm"/>
+                      <input type="time" name="hora_fin" value={actividadEnEdicion.hora_fin?.slice(0,5) || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm"/>
                     </div>
                   </div>
 
@@ -2755,6 +2834,45 @@ export default function AdminReportes() {
         </div>
       )}
 
+      {/* ================= MODAL DESHABILITAR MES ================= */}
+      {showDeshabilitarModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+              <h3 className="font-black text-lg text-gray-800 flex items-center gap-2">
+                <Lock size={20} className="text-red-600"/> Cerrar Mes de Reportes
+              </h3>
+              <button onClick={() => setShowDeshabilitarModal(false)} className="p-1 hover:bg-gray-200 rounded-full text-gray-500">
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleDeshabilitarMes} className="p-6 space-y-4">
+              <p className="text-sm text-gray-600 mb-4">Esta acción bloqueará todos los reportes de los embajadores que aún sigan en "Borrador" en el mes seleccionado. Ya no podrán agregar ni editar información.</p>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Seleccionar Mes a Cerrar</label>
+                <select 
+                  required 
+                  className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none" 
+                  value={mesDeshabilitar} 
+                  onChange={e => setMesDeshabilitar(e.target.value)}
+                >
+                  <option value="" disabled>-- Selecciona un periodo --</option>
+                  {mesesDisponibles.map((m, i) => (
+                    <option key={i} value={`${m.mes}-${m.anio}`}>{m.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="pt-4 flex gap-3">
+                <button type="button" onClick={() => setShowDeshabilitarModal(false)} className="flex-1 py-2.5 rounded-xl font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-100">Cancelar</button>
+                <button type="submit" disabled={procesandoDeshabilitar} className="flex-1 py-2.5 rounded-xl font-bold text-white bg-red-600 hover:bg-red-700 flex items-center justify-center gap-2 disabled:bg-gray-400">
+                  {procesandoDeshabilitar ? <><Loader2 className="animate-spin" size={16}/> Procesando...</> : 'Confirmar Cierre'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* ================= MODAL HABILITAR MES ================= */}
       {showHabilitarModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -2793,17 +2911,26 @@ export default function AdminReportes() {
       )}
 
       {/* ================= CABECERA Y PANEL PRINCIPAL ============ */}
-      <div className="mb-6 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center shrink-0">
+      <div className="mb-6 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shrink-0">
         <div>
           <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2"><Inbox className="text-[#00689D]"/> Bandeja de Auditoría</h1>
           <p className="text-sm text-gray-500 mt-1">Revisa los expedientes enviados por los embajadores</p>
         </div>
-        <button 
-          onClick={() => setShowHabilitarModal(true)}
-          className="flex items-center gap-2 bg-[#00689D] text-white px-5 py-2.5 rounded-xl font-bold hover:bg-[#00527A] transition-colors shadow-sm"
-        >
-          <Plus size={18} /> Habilitar Nuevo Mes
-        </button>
+        
+        <div className="flex flex-wrap gap-2 w-full md:w-auto">
+          <button 
+            onClick={() => setShowDeshabilitarModal(true)}
+            className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-red-50 text-red-600 px-5 py-2.5 rounded-xl font-bold hover:bg-red-100 transition-colors shadow-sm border border-red-200"
+          >
+            <Lock size={18} /> Cerrar Mes
+          </button>
+          <button 
+            onClick={() => setShowHabilitarModal(true)}
+            className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-[#00689D] text-white px-5 py-2.5 rounded-xl font-bold hover:bg-[#00527A] transition-colors shadow-sm"
+          >
+            <Plus size={18} /> Habilitar Nuevo Mes
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-1 gap-6 min-h-0">
@@ -2826,9 +2953,10 @@ export default function AdminReportes() {
             <div className="p-3 space-y-3 bg-white">
               <div>
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Filtrar por Mes</label>
+                {/* SELECT DINÁMICO */}
                 <select value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className="w-full text-xs font-semibold text-gray-700 border border-gray-200 rounded p-1.5 outline-none focus:border-[#00689D]">
-                  <option value="Todos">Todos los meses</option>
-                  {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+                  <option value="Todos">Todos los meses generados</option>
+                  {mesesDisponibles.map((m, i) => <option key={i} value={`${m.mes}-${m.anio}`}>{m.nombre}</option>)}
                 </select>
               </div>
               <div>
@@ -2867,6 +2995,9 @@ export default function AdminReportes() {
           <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden min-w-0">
             <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between shrink-0 items-center">
               <h2 className="text-lg font-black"><FileText className="inline text-[#00689D] mr-2"/> Expediente: {reporteSeleccionado.nombre_mes} - {reporteSeleccionado.embajador.nombre}</h2>
+              <button onClick={() => seleccionarReporte(reporteSeleccionado)} className="text-[#00689D] flex items-center gap-1.5 text-xs font-bold bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
+                <RefreshCw size={14}/> Refrescar datos
+              </button>
             </div>
             <div className="flex-1 flex overflow-hidden">
               <div className="flex-1 bg-gray-600 flex flex-col">
@@ -2891,11 +3022,17 @@ export default function AdminReportes() {
                       <div key={act.id} className={`p-3 rounded-xl border ${act.anulada ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}`}>
                         <p className={`text-sm font-bold truncate mb-3 ${act.anulada ? 'line-through text-red-600' : ''}`}>{idx + 1}. {act.nombre}</p>
                         <div className="flex gap-2">
-                          <button onClick={() => setActividadEnEdicion(act)} className="flex-1 flex justify-center py-1.5 text-xs font-bold rounded-lg border bg-gray-100 hover:bg-gray-200 text-gray-700">Editar</button>
+                          <button 
+                            onClick={() => setActividadEnEdicion(act)} 
+                            title="Editar actividad"
+                            className="flex items-center justify-center px-3 py-1.5 rounded-lg border bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
+                          >
+                            <Edit2 size={16} />
+                          </button>
                           
                           <button 
                             onClick={() => toggleAnularActividad(act.id, act.anulada)} 
-                            className={`w-full flex justify-center py-1.5 text-xs font-bold rounded-lg border transition-colors ${act.anulada ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}
+                            className={`flex-1 flex justify-center items-center py-1.5 text-xs font-bold rounded-lg border transition-colors ${act.anulada ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}
                           >
                             {act.anulada ? 'Restaurar Actividad' : 'Anular en Auditoría'}
                           </button>
