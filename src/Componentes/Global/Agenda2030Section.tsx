@@ -87,7 +87,7 @@ export default function Agenda2030Section() {
                         className="group relative flex h-32 sm:h-36 w-full cursor-pointer flex-col overflow-hidden p-2 text-left transition duration-300 hover:-translate-y-1 hover:shadow-xl rounded-md"
                         style={{ backgroundColor: bgColor }}
                       >
-                          <img src={item.imagen} alt={item.nombre} className="h-full w-full object-contain drop-shadow-sm transition-transform duration-300 group-hover:scale-105" />
+                          <img src={item.imagen} alt={item.nombre} className="h-full w-full object-contain  transition-transform duration-300 group-hover:scale-105" />
                       </div>
                     </HoverCardTrigger>
                     
@@ -153,7 +153,7 @@ export default function Agenda2030Section() {
               <img 
                 src={selectedOds.imagen} 
                 alt={selectedOds.nombre} 
-                className="h-full w-full object-contain drop-shadow-xl" 
+                className="h-full w-full object-contain " 
               />
             </div>
             
