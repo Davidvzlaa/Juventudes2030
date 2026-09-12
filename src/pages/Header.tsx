@@ -74,6 +74,7 @@ export default function Header() {
                   <>
                     <Link to="/administrador" className="text-gray-700 hover:text-[#00689D] hover:bg-blue-100/50 px-3 py-2 rounded-md font-semibold transition-colors flex items-center gap-1.5"><LayoutDashboard size={18}/> Dashboard</Link>
                     <Link to="/administrador/usuarios" className="text-gray-700 hover:text-[#00689D] hover:bg-blue-100/50 px-3 py-2 rounded-md font-semibold transition-colors flex items-center gap-1.5"><Users size={18}/> Usuarios</Link>
+                    <Link to="/administrador/calendario" className="text-gray-700 hover:text-[#00689D] hover:bg-blue-100/50 px-3 py-2 rounded-md font-semibold transition-colors flex items-center gap-1.5"><Calendar size={18}/> Calendario</Link>
                     <Link to="/administrador/reportes" className="text-gray-700 hover:text-[#00689D] hover:bg-blue-100/50 px-3 py-2 rounded-md font-semibold transition-colors flex items-center gap-1.5"><FileText size={18}/> Reportes</Link>
                     <Link to="/administrador/catalogos" className="text-gray-700 hover:text-[#00689D] hover:bg-blue-100/50 px-3 py-2 rounded-md font-semibold transition-colors flex items-center gap-1.5"><Settings size={18}/> Configuración</Link>
                   </>
@@ -144,6 +145,8 @@ export default function Header() {
                     <Link to="/administrador/usuarios" onClick={closeMenu} className="text-gray-800 hover:text-[#00689D] hover:bg-blue-50 px-4 py-3 rounded-lg font-semibold flex items-center gap-3"><Users size={20} className="text-blue-500"/> Usuarios</Link>
                     <Link to="/administrador/reportes" onClick={closeMenu} className="text-gray-800 hover:text-[#00689D] hover:bg-blue-50 px-4 py-3 rounded-lg font-semibold flex items-center gap-3"><FileText size={20} className="text-blue-500"/> Reportes</Link>
                     <Link to="/administrador/catalogos" onClick={closeMenu} className="text-gray-800 hover:text-[#00689D] hover:bg-blue-50 px-4 py-3 rounded-lg font-semibold flex items-center gap-3"><Settings size={20} className="text-blue-500"/> Configuración</Link>
+                    <Link to="/administrador/calendario" onClick={closeMenu} className="text-gray-800 hover:text-[#00689D] hover:bg-blue-50 px-4 py-3 rounded-lg font-semibold flex items-center gap-3"><Calendar size={20} className="text-blue-500"/> Calendario</Link>
+                  
                   </>
                 )}
 
