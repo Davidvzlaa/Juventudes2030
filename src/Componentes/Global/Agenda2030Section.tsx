@@ -90,7 +90,7 @@ export default function Agenda2030Section() {
                     </div> */}
                     <div className="group relative flex h-32 w-full cursor-pointer flex-col overflow-hidden p-4 text-left transition duration-300 hover:-translate-y-1 hover:shadow-xl"
                       style={{ backgroundColor: bgColor }}>
-                        <img src={item.imagen} alt={item.nombre} className="h-full w-full object-cover" />
+                        <img src={item.imagen} alt={item.nombre} className="h-full w-full object-contain" />
                           
                     </div>
                   </HoverCardTrigger>
