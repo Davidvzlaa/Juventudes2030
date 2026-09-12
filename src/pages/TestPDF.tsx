@@ -1,5 +1,5 @@
 import { PDFViewer } from '@react-pdf/renderer';
-import { ReportePDF } from '../ReportePDF';
+import ReportePDF from '../ReportePDF';
 import { mockSnapshot } from '../mockSnapshot';
 
 export default function TestPDF() {
