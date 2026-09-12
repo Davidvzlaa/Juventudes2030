@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
 // 2. COMPONENTE PDF
 // ==========================================
 export default function ReportePDF({ snapshot, categorias = [], acciones = [] }: any) {
-  if (!snapshot || !snapshot.actividades) return null;
+    if (!snapshot || !snapshot.actividades) return null;
 
   return (
     <Document>
