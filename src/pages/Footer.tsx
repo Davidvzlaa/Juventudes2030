@@ -1,26 +1,32 @@
 import React, { useState, useEffect } from 'react';
-// 1. Dejas Lucide solo para los íconos de interfaz (UI)
-import { Globe2, Users, Mail, MapPin, Phone, ArrowRight } from 'lucide-react';
-
-// 2. Importas las redes sociales desde react-icons (Usando FontAwesome 6)
+import { Mail, MapPin, Phone, Clock } from 'lucide-react';
 import { 
   FaFacebook, 
   FaInstagram, 
-  FaXTwitter, // El nuevo logo de X
+  FaXTwitter, 
   FaLinkedin, 
   FaYoutube 
 } from "react-icons/fa6";
 import Juventudes2030 from '../assets/LOGO JUVENTUDES 20230.png';
 import { supabase } from '../lib/supabase';
 
-// Interfaces para TypeScript
+interface Horario {
+  etiqueta?: string;
+  dias: string;
+  horas: string;
+}
+
 interface Sistema {
   nombre: string;
-  descripcion: string;
   direccion: string;
   correo: string;
   telefono: string;
-  logotipo: string;
+  logotipos: {
+    principal?: string;
+    blanco?: string;
+    icono?: string;
+  };
+  horarios: Horario[]; 
 }
 
 interface RedSocial {
@@ -35,45 +41,39 @@ export default function Footer() {
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+
     const fetchFooterData = async () => {
-      setCargando(true);
       try {
-        // 1. Cargar la información general del sistema (Asumimos que solo hay 1 activo)
-        const { data: dataSistema, error: errorSistema } = await supabase
+        const { data: dataSistema } = await supabase
           .from('sistemas')
-          .select('nombre, descripcion, direccion, correo, telefono, logotipo')
+          .select('nombre, direccion, horarios, correo, telefono, logotipos')
           .eq('activo', true)
-          .single();
+          .maybeSingle();
 
-        if (errorSistema && errorSistema.code !== 'PGRST116') {
-          console.error('Error al cargar sistema:', errorSistema);
-        } else if (dataSistema) {
-          setSistema(dataSistema);
-        }
+        if (dataSistema && isMounted) setSistema(dataSistema);
 
-        // 2. Cargar las redes sociales activas
-        const { data: dataRedes, error: errorRedes } = await supabase
+        const { data: dataRedes } = await supabase
           .from('redes_sociales')
           .select('id, nombre, url')
           .eq('activo', true)
           .order('id', { ascending: true });
 
-        if (errorRedes) throw errorRedes;
-        if (dataRedes) setRedes(dataRedes);
+        if (dataRedes && isMounted) setRedes(dataRedes);
 
       } catch (error) {
-        console.error('Error al cargar los datos del footer:', error);
+        console.error('Error al cargar datos del footer:', error);
       } finally {
-        setCargando(false);
+        if (isMounted) setCargando(false);
       }
     };
 
     fetchFooterData();
+    return () => { isMounted = false; };
   }, []);
 
-  // Función para asignar el ícono correcto mapeando la columna "nombre"
   const getIconoRed = (nombre: string) => {
-    const props = { size: 20, className: "shrink-0" };
+    const props = { size: 16, className: "shrink-0 transition-all duration-300 hover:scale-110" };
     switch (nombre.toLowerCase()) {
       case 'facebook': return <FaFacebook {...props} />;
       case 'instagram': return <FaInstagram {...props} />;
@@ -81,147 +81,104 @@ export default function Footer() {
       case 'x': return <FaXTwitter {...props} />;
       case 'linkedin': return <FaLinkedin {...props} />; 
       case 'youtube': return <FaYoutube {...props} />;
-      default: return <Globe2 {...props} />;
+      default: return null;
     }
   };
 
+  const getLogo = () => {
+    if (!sistema?.logotipos) return Juventudes2030;
+    return sistema.logotipos.blanco || sistema.logotipos.principal || Juventudes2030;
+  };
+
   return (
-    <footer className="bg-[#061A2D] text-white border-t border-white/10">
-      <div className="mx-auto max-w-7xl px-5 py-16 sm:px-8">
-        <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-4">
+    <footer className="bg-[#04111f] text-white/70 border-t border-white/10 font-light">
+      <div className="mx-auto max-w-7xl px-6 py-5 md:py-4">
+        <div className="flex flex-col xl:flex-row items-center justify-between gap-6 text-xs">
           
-          {/* Columna 1: Identidad y Descripción Dinámica */}
-          <div className="lg:col-span-1 flex flex-col gap-6">
-            <img
-              // Si hay un logotipo en la BD lo usa, si no, usa el import local
-              src={sistema?.logotipo || Juventudes2030}
-              alt={sistema?.nombre || "Juventudes 2030"}
-              loading="lazy"
-              className="h-16 w-auto object-contain brightness-0 invert"
-            />
-            <p className="text-sm text-white/60 leading-relaxed">
-              {cargando ? (
-                <span className="flex flex-col gap-2">
-                  <span className="h-4 w-full bg-white/10 rounded animate-pulse"></span>
-                  <span className="h-4 w-4/5 bg-white/10 rounded animate-pulse"></span>
-                  <span className="h-4 w-3/4 bg-white/10 rounded animate-pulse"></span>
-                </span>
-              ) : (
-                sistema?.descripcion || 
-"Un espacio para visibilizar, impulsar y conectar las acciones de las juventudes que trabajan por comunidades más justas, inclusivas y sostenibles."
-              )}
+          <div className="flex flex-col md:flex-row items-center gap-4 shrink-0">
+            {cargando ? (
+              <div className="h-8 w-24 bg-white/5 rounded animate-pulse"></div>
+            ) : (
+              <img
+                src={getLogo()}
+                alt={sistema?.nombre || "Juventudes 2030"}
+                // Aplicamos los filtros CSS para forzar el color blanco
+                className="h-8 md:h-10 w-auto object-contain brightness-0 invert opacity-90 transition-opacity hover:opacity-100"
+              />
+            )}
+            
+            <div className="hidden md:block w-px h-8 bg-white/10"></div>
+            
+            <p className="text-white/50 text-center md:text-left leading-tight">
+              © {new Date().getFullYear()} <span className="font-medium text-white/80">{sistema?.nombre || 'Juventudes 2030'}</span>.
+              <span className="hidden md:inline"> Todos los derechos reservados.</span>
             </p>
           </div>
 
-          {/* Columna 2: Navegación Rápida */}
-          <div>
-            <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-white/40 mb-6">
-              Explorar
-            </h3>
-            <ul className="flex flex-col gap-3">
-              {['Inicio', 'Acciones', 'Eventos', 'Agenda 2030'].map((item) => (
-                <li key={item}>
-                  <a 
-                    href={`#${item.toLowerCase().replace(' ', '-')}`} 
-                    className="group flex items-center text-sm text-white/60 transition-colors hover:text-white"
-                  >
-                    <ArrowRight size={14} className="mr-2 opacity-0 -translate-x-2 transition-all group-hover:opacity-100 group-hover:translate-x-0 text-[#26BDE2]" />
-                    {item}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <div className="flex flex-wrap justify-center xl:justify-end items-center gap-x-6 gap-y-3 flex-1">
+            {(sistema?.direccion || (!sistema && !cargando)) && (
+              <div className="flex items-start gap-1.5 group max-w-[280px]">
+                <MapPin size={14} className="text-[#26BDE2] shrink-0 mt-0.5" />
+                <span className="leading-tight">
+                  {sistema?.direccion || "Sinaloa, México"}
+                </span>
+              </div>
+            )}
 
-          {/* Columna 3: Información y Contacto Dinámico */}
-          <div>
-            <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-white/40 mb-6">
-              Contacto
-            </h3>
-            <div className="space-y-4">
-              {sistema?.direccion && (
-                <div className="flex items-start gap-3">
-                  <MapPin size={18} className="shrink-0 text-[#26BDE2] mt-0.5" />
-                  <span className="text-sm text-white/60">
-                    {sistema.direccion}
-                  </span>
-                </div>
-              )}
-              {sistema?.correo && (
-                <div className="flex items-center gap-3">
-                  <Mail size={18} className="shrink-0 text-[#26BDE2]" />
-                  <a href={`mailto:${sistema.correo}`} className="text-sm text-white/60 hover:text-white transition-colors">
-                    {sistema.correo}
-                  </a>
-                </div>
-              )}
-              {sistema?.telefono && (
-                <div className="flex items-center gap-3">
-                  <Phone size={18} className="shrink-0 text-[#26BDE2]" />
-                  <a href={`tel:${sistema.telefono}`} className="text-sm text-white/60 hover:text-white transition-colors">
-                    {sistema.telefono}
-                  </a>
-                </div>
-              )}
-              {/* Fallback por si la tabla sistemas está vacía */}
-              {!sistema && !cargando && (
-                <>
-                  <div className="flex items-start gap-3">
-                    <MapPin size={18} className="shrink-0 text-[#26BDE2] mt-0.5" />
-                    <span className="text-sm text-white/60">Sinaloa, México</span>
+            {sistema?.horarios && sistema.horarios.length > 0 && (
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                {sistema.horarios.map((horario, index) => (
+                  <div key={index} className="flex items-center gap-1.5 group">
+                    <Clock size={14} className="text-[#26BDE2] shrink-0" />
+                    <span>
+                      {horario.etiqueta && <span className="font-medium text-white/80 mr-1">{horario.etiqueta}:</span>}
+                      {horario.dias}, {horario.horas}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <Globe2 size={18} className="shrink-0 text-[#26BDE2]" />
-                    <span className="text-sm text-white/60">Desarrollo Sostenible</span>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Columna 4: Redes Sociales Dinámicas */}
-          <div>
-            <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-white/40 mb-6">
-              Síguenos
-            </h3>
-            
-            {cargando ? (
-              <div className="flex gap-3">
-                {[1, 2, 3].map((skeleton) => (
-                  <div key={skeleton} className="h-10 w-10 rounded-full bg-white/10 animate-pulse" />
                 ))}
               </div>
-            ) : redes.length > 0 ? (
-              <div className="flex flex-wrap gap-3">
-                {redes.map((red) => (
+            )}
+            
+            {sistema?.correo && (
+              <a href={`mailto:${sistema.correo}`} className="flex items-center gap-1.5 transition-colors hover:text-white group">
+                <Mail size={14} className="text-[#26BDE2] shrink-0" />
+                <span>{sistema.correo}</span>
+              </a>
+            )}
+            
+            {sistema?.telefono && (
+              <a href={`tel:${sistema.telefono.replace(/\s+/g, '')}`} className="flex items-center gap-1.5 transition-colors hover:text-white group">
+                <Phone size={14} className="text-[#26BDE2] shrink-0" />
+                <span>{sistema.telefono}</span>
+              </a>
+            )}
+          </div>
+
+          <div className="flex items-center gap-4 shrink-0 pt-2 xl:pt-0">
+            <div className="hidden xl:block w-px h-6 bg-white/10 mr-2"></div>
+            
+            {!cargando && redes.length > 0 ? (
+              redes.map((red) => {
+                const Icon = getIconoRed(red.nombre);
+                if (!Icon) return null;
+                return (
                   <a
                     key={red.id}
                     href={red.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    title={`Síguenos en ${red.nombre}`}
-                    className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5 text-white/70 transition-all hover:-translate-y-1 hover:bg-[#26BDE2] hover:text-white hover:shadow-lg hover:shadow-[#26BDE2]/20"
+                    aria-label={`Visitar ${red.nombre}`}
+                    className="text-white/50 hover:text-[#26BDE2] transition-colors"
                   >
-                    {getIconoRed(red.nombre)}
+                    {Icon}
                   </a>
-                ))}
-              </div>
+                );
+              })
             ) : (
-              <p className="text-sm text-white/40">No hay redes disponibles.</p>
+              !cargando && <span className="text-white/30 text-[10px] uppercase tracking-widest">Sin redes</span>
             )}
           </div>
 
-        </div>
-
-        {/* Bottom Bar: Copyright */}
-        <div className="mt-16 border-t border-white/10 pt-8 flex flex-col gap-4 text-xs text-white/40 md:flex-row md:items-center md:justify-between">
-          <p>
-            © {new Date().getFullYear()} {sistema?.nombre || 'Juventudes 2030 Sinaloa'}. Todos los derechos reservados.
-          </p>
-          <div className="flex items-center gap-2">
-            <span>Desarrollado con propósito por</span>
-            <span className="font-bold text-white/80 tracking-wide">David Valenzuela</span>
-          </div>
         </div>
       </div>
     </footer>
