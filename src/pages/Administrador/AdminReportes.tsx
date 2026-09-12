@@ -135,11 +135,21 @@ export default function AdminReportes() {
     finally { setProcesandoDeshabilitar(false); }
   };
 
-  const seleccionarReporte = async (reporte: any) => {
+  // Agregamos ", forceRefresh = false"
+  const seleccionarReporte = async (reporte: any, forceRefresh = false) => {
+    // Si NO es un refresco forzado y es el mismo reporte, lo deselecciona
+    if (!forceRefresh && reporteSeleccionado?.id === reporte.id) {
+      setReporteSeleccionado(null); 
+      return; 
+    }
+
     setReporteSeleccionado(reporte); 
     
     const strMes = String(reporte.mes).padStart(2, '0');
+    // ... (el resto del código de esta función queda igual) ...
     const ultimoDia = new Date(reporte.anio, reporte.mes, 0).getDate();
+    
+    // ... el resto de tu código de consultas a Supabase se queda exactamente igual ...
     
     const { data: actividadesMes } = await supabase.from('actividades').select(`
         *, municipios(nombre),
@@ -257,20 +267,20 @@ export default function AdminReportes() {
       const tipoAccionIdInt = parseInt(actividadEnEdicion.tipo_accion_id_real, 10);
       const tipoObj = accionesDB.find(a => a.id === tipoAccionIdInt);
 
-      let odsPrincipalText = '';
-      if (actividadEnEdicion.ods_seleccionados?.length > 0) {
-        const odsPrin = odsDB.find(o => o.id === actividadEnEdicion.ods_seleccionados[0]);
-        if (odsPrin) odsPrincipalText = `${odsPrin.numero}. ${odsPrin.nombre}`;
-      }
-
+      
       const { error: errAct } = await supabase.from('actividades').update({
-        nombre: actividadEnEdicion.nombre, tipo_actividad: tipoObj?.nombre || null, 
+        nombre: actividadEnEdicion.nombre, 
+        tipo_actividad: tipoObj?.nombre || null, 
         fecha_evento: actividadEnEdicion.fecha_evento,
-        hora_inicio: actividadEnEdicion.hora_inicio || null, hora_fin: actividadEnEdicion.hora_fin || null,
-        lugar: actividadEnEdicion.lugar, municipio_id: actividadEnEdicion.domicilio?.municipio || null,
-        calle: actividadEnEdicion.domicilio?.calle, colonia: actividadEnEdicion.domicilio?.colonia,
-        rango_edad_beneficiarios: actividadEnEdicion.rango_edad, rango_edad: actividadEnEdicion.rango_edad,
-        ods_principal: odsPrincipalText, descripcion: actividadEnEdicion.descripcion,
+        hora_inicio: actividadEnEdicion.hora_inicio || null, 
+        hora_fin: actividadEnEdicion.hora_fin || null,
+        lugar: actividadEnEdicion.lugar, 
+        municipio_id: actividadEnEdicion.domicilio?.municipio || null,
+        calle: actividadEnEdicion.domicilio?.calle, 
+        colonia: actividadEnEdicion.domicilio?.colonia,
+        rango_edad_beneficiarios: actividadEnEdicion.rango_edad, 
+        rango_edad: actividadEnEdicion.rango_edad,
+        descripcion: actividadEnEdicion.descripcion,
         fecha_actualizacion: new Date().toISOString()
       }).eq('id', actId);
       if (errAct) throw errAct;
@@ -314,7 +324,7 @@ export default function AdminReportes() {
 
       alert('Actividad modificada exitosamente');
       setActividadEnEdicion(null);
-      seleccionarReporte(reporteSeleccionado); 
+      seleccionarReporte(reporteSeleccionado, true); // Le pasamos true para forzar la recarga 
       
     } catch (error: any) { alert('Error al guardar: ' + error.message); } 
     finally { setGuardando(false); }
@@ -576,7 +586,7 @@ export default function AdminReportes() {
           <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden min-w-0">
             <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center shrink-0">
               <h2 className="text-lg font-black"><FileText className="inline text-[#00689D] mr-2"/> Expediente: {reporteSeleccionado.nombre_mes} - {reporteSeleccionado.embajador.nombre}</h2>
-              <button onClick={() => seleccionarReporte(reporteSeleccionado)} className="text-[#00689D] flex items-center gap-1.5 text-xs font-bold bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100"><RefreshCw size={14}/> Refrescar datos</button>
+              <button onClick={() => seleccionarReporte(reporteSeleccionado, true)} className="text-[#00689D] flex items-center gap-1.5 text-xs font-bold bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100"><RefreshCw size={14}/> Refrescar datos</button>
             </div>
             
             <div className="flex-1 flex overflow-hidden">
