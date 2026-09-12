@@ -17,7 +17,6 @@ import EmbajaActividad from './pages/Embajadores/EmbajaActividad';
 import EmbajaReporte from './pages/Embajadores/EmbajaReporte';
 import { AuthProvider } from './hooks/useAuth';
 import EmbajaCalendario from './pages/Embajadores/EmbajaCalendario';
-import TestPDF from './pages/TestPDF';
 import AdminCalendario from './pages/Administrador/AdminCalendario';
 export default function App() {
   return (
@@ -26,7 +25,6 @@ export default function App() {
         <Routes>
         <Route path="/" element={<PaginaPrincipal />} />
         <Route path="/Login" element={<Login />} />
-        <Route path="/test-pdf" element={<TestPDF />} />
 
         <Route element={<ProtectedRoute allowedRoles={['Administrador']} />}>
           <Route path="/administrador" element={<AdminUsersLayout />}>
