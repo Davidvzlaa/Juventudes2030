@@ -77,11 +77,24 @@ export default function ReportePDF({ snapshot, categorias = [], acciones = [] }:
              if (accionEncontrada) nombreActividadReal = accionEncontrada.nombre;
           }
 
-          // 3. ODS Principal
+          // 3. ODS Principal y Complementarios
           let odsText = actividad.ods_principal || '';
-          if (!odsText && actividad.actividad_ods) {
+          let odsComplementariosText = 'Ninguno'; // Texto por defecto
+
+          if (actividad.actividad_ods) {
+            // Buscamos el principal
             const odsPrin = actividad.actividad_ods.find((o: any) => o.es_principal);
             if (odsPrin?.ods) odsText = `${odsPrin.ods.numero}. ${odsPrin.ods.nombre}`;
+
+            // Buscamos los complementarios (los que NO son principales)
+            const odsSecundarios = actividad.actividad_ods.filter((o: any) => !o.es_principal);
+            if (odsSecundarios.length > 0) {
+              // Los unimos separándolos por una coma
+              odsComplementariosText = odsSecundarios
+                .map((o: any) => o.ods ? `${o.ods.numero}. ${o.ods.nombre}` : '')
+                .filter(Boolean)
+                .join('  •  '); 
+            }
           }
           
           // 4. Ubicación
@@ -145,8 +158,9 @@ export default function ReportePDF({ snapshot, categorias = [], acciones = [] }:
               </View>
               
               <View style={styles.row}>
-                <View style={[styles.cellHeaderCenter, styles.w15]}><Text>Actividad</Text></View>
-                <View style={[styles.cellData, styles.w35]}><Text>{nombreActividadReal}</Text></View>
+                {/* --- AQUI ESTA LA CORRECCIÓN DE TIPO DE ACTIVIDAD --- */}
+                <View style={[styles.cellHeaderCenter, styles.w15]}><Text>Tipo de Actividad</Text></View>
+                <View style={[styles.cellData, styles.w35]}><Text>{tipoActividadText}</Text></View>
                 <View style={[styles.cellHeaderCenter, styles.w15]}><Text>Inicio (Hora)</Text></View>
                 <View style={[styles.cellData, styles.w10]}><Text>{horaInicio}</Text></View>
                 <View style={[styles.cellHeaderCenter, styles.w15]}><Text>Fin (Hora)</Text></View>
@@ -158,10 +172,16 @@ export default function ReportePDF({ snapshot, categorias = [], acciones = [] }:
                 <View style={[styles.cellData, styles.w85, styles.noBorderRight]}><Text>{odsText}</Text></View>
               </View>
               
+              {/* === NUEVA FILA DE ODS COMPLEMENTARIOS === */}
+              <View style={styles.row}>
+                <View style={[styles.cellHeaderCenter, styles.w15]}><Text>ODS COMPLEMENTARIOS</Text></View>
+                <View style={[styles.cellData, styles.w85, styles.noBorderRight]}><Text>{odsComplementariosText}</Text></View>
+              </View>
+              {/* ========================================= */}
+              
               <View style={styles.row}>
                 <View style={[styles.cellHeaderCenter, styles.w15]}><Text>Sostenibilidad</Text></View>
                 <View style={[styles.cellHeaderCenter, styles.w15]}><Text>Económico</Text></View>
-                <View style={[styles.cellData, styles.w15]}><Text style={styles.textCenter}>{econ ? 'X' : ''}</Text></View>
                 <View style={[styles.cellHeaderCenter, styles.w10]}><Text>Social</Text></View>
                 <View style={[styles.cellData, styles.w15]}><Text style={styles.textCenter}>{soc ? 'X' : ''}</Text></View>
                 <View style={[styles.cellHeaderCenter, styles.w15]}><Text>Ambiental</Text></View>
