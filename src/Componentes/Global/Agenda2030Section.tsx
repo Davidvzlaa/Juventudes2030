@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useInView } from "react-intersection-observer";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, X } from "lucide-react"; // <-- Agregamos el ícono X
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "../../components/ui/hover-card"; 
 import { supabase } from "../../lib/supabase"; 
 
@@ -18,11 +18,20 @@ export default function Agenda2030Section() {
   
   const [odsList, setOdsList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // <-- NUEVO ESTADO: Controla qué ODS está seleccionado en versión celular
+  const [selectedOds, setSelectedOds] = useState<any>(null); 
+
+  // <-- MEJORA: Evitar que el fondo se mueva al hacer scroll cuando el modal móvil está abierto
+  useEffect(() => {
+    if (selectedOds) document.body.style.overflow = 'hidden';
+    else document.body.style.overflow = 'unset';
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [selectedOds]);
 
   useEffect(() => {
     const fetchOds = async () => {
       try {
-        // Al hacer select('*'), nos traemos también la columna 'imagen'
         const { data, error } = await supabase
           .from('ods')
           .select('*')
@@ -74,52 +83,30 @@ export default function Agenda2030Section() {
                 <HoverCard key={item.id}>
                   {/* BOTÓN / TARJETA PRINCIPAL */}
                   <HoverCardTrigger>
-                    {/* <div
-                      className="group relative flex h-32 w-full cursor-pointer flex-col overflow-hidden p-4 text-left transition duration-300 hover:-translate-y-1 hover:shadow-xl"
+                    <div 
+                      onClick={() => setSelectedOds(item)} // <-- NUEVO: Al tocar, guardamos el ODS para el celular
+                      className="group relative flex h-32 w-full cursor-pointer flex-col overflow-hidden p-2 text-left transition duration-300 hover:-translate-y-1 hover:shadow-xl rounded-md"
                       style={{ backgroundColor: bgColor }}
                     >
-                      <span className="text-3xl font-bold leading-none text-white/95">
-                        {String(item.numero).padStart(2, "0")}
-                      </span>
-                      <div>
-                        <div className="mb-1 h-px w-7 bg-white/50 transition-all duration-300 group-hover:w-12" />
-                        <span className="text-[11px] font-bold uppercase leading-2 tracking-wide text-white">
-                          {item.nombre}
-                        </span>
-                      </div>
-                    </div> */}
-                    <div className="group relative flex h-32 w-full cursor-pointer flex-col overflow-hidden p-4 text-left transition duration-300 hover:-translate-y-1 hover:shadow-xl"
-                      style={{ backgroundColor: bgColor }}>
                         <img src={item.imagen} alt={item.nombre} className="h-full w-full object-contain" />
-                          
                     </div>
                   </HoverCardTrigger>
                   
-                  {/* GLOBO DE INFORMACIÓN (HOVER) */}
-                  <HoverCardContent side="inline-end" align="center" sideOffset={10} className="w-[340px] overflow-hidden border-0 bg-white p-0 shadow-2xl">
+                  {/* GLOBO DE INFORMACIÓN (HOVER EN COMPUTADORA) */}
+                  {/* <-- NUEVO: Agregamos "hidden md:block" para que no estorbe en celulares */}
+                  <HoverCardContent side="top" align="center" sideOffset={10} className="hidden md:block w-[340px] overflow-hidden border-0 bg-white p-0 shadow-2xl z-50">
                     <div className="h-2 w-full" style={{ backgroundColor: bgColor }} />
                     <div className="p-5">
-                      <div className="flex gap-4">
-                        
-                        {/* AQUÍ ESTÁ LA MAGIA DE LA IMAGEN */}
-                        {/* {item.imagen ? (
-                          <img 
-                            src={item.imagen} 
-                            alt={item.nombre}
-                            className="h-14 w-14 shrink-0 object-contain rounded shadow-sm bg-white"
-                          />
-                        ) : ( */}
-                          <div className="flex h-14 w-14 shrink-0 items-center justify-center text-xl font-bold text-white rounded" style={{ backgroundColor: bgColor }}>
-                            {String(item.numero).padStart(2, "0")}
-                          </div>
-                        {/* )} */}
-
+                      <div className="flex gap-4 items-center">
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center text-xl font-bold text-white rounded" style={{ backgroundColor: bgColor }}>
+                          {String(item.numero).padStart(2, "0")}
+                        </div>
                         <div className="flex flex-col align-center justify-center">
-                          <h3 className="mt-1 text-lg font-bold leading-6 text-[#061A2D]">{item.nombre}</h3>
+                          <h3 className="text-lg font-bold leading-5 text-[#061A2D]">{item.nombre}</h3>
                         </div>
                       </div>
-                      <div className="mt-2">
-                        <div className="mb-1 h-px w-full transition-all duration-300 group-hover:w-12" style={{ backgroundColor: bgColor }} />
+                      <div className="mt-4">
+                        <div className="mb-3 h-px w-full" style={{ backgroundColor: `${bgColor}40` }} />
                         <p className="text-sm leading-6 text-gray-600">{item.descripcion}</p>
                       </div>
                     </div>
@@ -140,6 +127,51 @@ export default function Agenda2030Section() {
           </a>
         </div>
       </div>
+
+      {/* ========================================================= */}
+      {/* NUEVO: MODAL EXCLUSIVO PARA CELULARES (Se activa al tocar) */}
+      {/* ========================================================= */}
+      {selectedOds && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-5 md:hidden backdrop-blur-sm transition-opacity"
+          onClick={() => setSelectedOds(null)} // Cierra el modal si tocan el fondo negro
+        >
+          <div 
+            className="relative w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()} // Evita que se cierre si tocan el cuadro blanco
+          >
+            {/* Botón de cerrar */}
+            <button
+              onClick={() => setSelectedOds(null)}
+              className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/80 text-gray-500 shadow-sm backdrop-blur hover:bg-gray-100"
+            >
+              <X size={18} />
+            </button>
+            
+            {/* Contenido del ODS adaptado a la tarjeta móvil */}
+            <div className="h-3 w-full" style={{ backgroundColor: odsColors[selectedOds.numero] || '#00689D' }} />
+            <div className="p-6">
+              <div className="flex items-center gap-4">
+                <div 
+                  className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl text-2xl font-black text-white shadow-md" 
+                  style={{ backgroundColor: odsColors[selectedOds.numero] || '#00689D' }}
+                >
+                  {String(selectedOds.numero).padStart(2, "0")}
+                </div>
+                <h3 className="text-xl font-bold leading-tight text-[#061A2D]">
+                  {selectedOds.nombre}
+                </h3>
+              </div>
+              <div className="mt-5">
+                <div className="mb-4 h-px w-full" style={{ backgroundColor: `${odsColors[selectedOds.numero] || '#00689D'}40` }} />
+                <p className="text-base leading-relaxed text-gray-600">
+                  {selectedOds.descripcion}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
