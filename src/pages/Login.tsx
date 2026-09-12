@@ -20,6 +20,7 @@ const OdsColorBar = () => {
     </div>
   );
 };
+
 interface Sistema {
   nombre: string;
   direccion: string;
@@ -31,13 +32,14 @@ interface Sistema {
     isotipo?: string;
   };
 }
+
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false); 
   const [sistema, setSistema] = useState<Sistema | null>(null);
-  const [cargandoSistema, setCargandoSistema] = useState(true);
+  
   const navigate = useNavigate();
   const { isAuthenticated, userRole } = useAuth();
 
@@ -55,7 +57,8 @@ export default function Login() {
       }
     }
   }, [isAuthenticated, userRole, navigate]);
-// ==========================================
+
+  // ==========================================
   // CARGAR CONFIGURACIÓN DEL SISTEMA (LOGO)
   // ==========================================
   useEffect(() => {
@@ -76,14 +79,13 @@ export default function Login() {
         }
       } catch (error) {
         console.error("Error de conexión:", error);
-      } finally {
-        if (isMounted) setCargandoSistema(false);
       }
     };
 
     fetchSistema();
     return () => { isMounted = false; };
   }, []);
+
   // ==========================================
   // FUNCIÓN PARA ENVIAR EL FORMULARIO
   // ==========================================
@@ -102,7 +104,8 @@ export default function Login() {
       setIsLoading(false);
     }
   };
-    const getLogo = () => {
+  
+  const getLogo = () => {
     // Si la BD tiene un logo principal guardado, lo usa sin importar si hay sesión o rol.
     if (sistema?.logotipos?.principal) {
       return sistema.logotipos.principal;
@@ -166,16 +169,6 @@ export default function Login() {
         <div className="absolute top-0 left-0 right-0 lg:hidden">
           <OdsColorBar />
         </div>
-
-        {/* Cambié el botón flotante en móviles para que sea visible (texto azul oscuro en vez de blanco) */}
-        {/* <Link 
-          to="/" 
-          className="absolute top-6 left-6 z-50 flex lg:hidden items-center space-x-2 text-sm font-bold text-[#00689D] bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-full transition-all duration-300 border border-blue-100 shadow-sm mt-4"
-          aria-label="Regresar a la página principal"
-        >
-          <ArrowLeft size={16} />
-          <span>Inicio</span>
-        </Link> */}
 
         <div className="w-full max-w-md space-y-8 bg-white p-10 rounded-2xl shadow-xl border border-gray-100 mt-12 lg:mt-0">
           
