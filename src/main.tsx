@@ -18,6 +18,7 @@ import EmbajaReporte from './pages/Embajadores/EmbajaReporte';
 import { AuthProvider } from './hooks/useAuth';
 import EmbajaCalendario from './pages/Embajadores/EmbajaCalendario';
 import TestPDF from './pages/TestPDF';
+import AdminCalendario from './pages/Administrador/AdminCalendario';
 export default function App() {
   return (
     <AuthProvider>
@@ -36,6 +37,9 @@ export default function App() {
           </Route>
           <Route path="/administrador/reportes" element={<AdminUsersLayout />}>
             <Route index element={<AdminReportes />} />
+          </Route>
+          <Route path="/administrador/calendario" element={<AdminUsersLayout />}>
+            <Route index element={<AdminCalendario />} />
           </Route>
           <Route path="/administrador/configuracion" element={<AdminLayout />}>
             <Route index element={<Navigate to="municipios" replace />} />
