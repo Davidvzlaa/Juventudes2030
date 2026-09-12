@@ -1,6 +1,7 @@
 import { useInView } from "react-intersection-observer";
 import { ArrowRight } from "lucide-react";
 import Juventudes2030 from "../../assets/LOGO JUVENTUDES 20230.png";
+import EMB2DA from "../../assets/EMB2DA.jpg";
 import { ods } from "../../data";
 
 export default function HeroSection() {
@@ -15,20 +16,20 @@ export default function HeroSection() {
       }`}
     >
       <img
-        src={Juventudes2030}
+        src={EMB2DA}
         alt="Juventudes participando"
-        className="absolute inset-0 h-full w-full object-cover object-center"
+        className="absolute inset-0 h-full w-full object-cover object-center animate-fade-in-up"
       />
       <div className="absolute inset-0 bg-gradient-to-r from-[#061A2D]/95 via-[#061A2D]/80 to-[#061A2D]/25" />
 
       <div className="relative mx-auto flex min-h-[400px] max-w-7xl items-center px-5 py-15 sm:px-8">
         <div className="max-w-3xl text-white">
-          <h1 className="text-5xl font-semibold leading-[0.98] tracking-tight sm:text-6xl lg:text-8xl">
+          <h1 className="text-5xl font-semibold leading-[0.98] tracking-tight ani sm:text-6xl lg:text-8xl">
             Juventudes
             <br />
             que transforman.
           </h1>
-          <p className="mt-8 max-w-2xl text-base leading-7 text-white/80 sm:text-lg">
+          <p className="mt-8 max-w-2xl  text-base leading-7 text-white/80 sm:text-lg">
             Un espacio para visibilizar, impulsar y conectar las acciones de
             las juventudes que trabajan por comunidades más justas, inclusivas
             y sostenibles.
