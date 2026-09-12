@@ -4,11 +4,17 @@ import { supabase } from '../../lib/supabase';
 import { 
   MapPin, Users, Target, Folder, ShieldCheck, 
   UploadCloud, Edit2, Trash2, PlusCircle, Save, 
-  X, Loader2, Image as ImageIcon, Activity, UserPlus
+  X, Loader2, Image as ImageIcon, Activity, UserPlus,
+  Settings // <-- Nuevo ícono añadido
 } from 'lucide-react';
 
-type TabType = 'municipios' | 'roles' | 'ods' | 'proyectos' | 'tipos_accion' | 'categorias_beneficiarios' | 'permisos';
+// IMPORTACIÓN DEL NUEVO COMPONENTE
+import CatalogoPrograma from '../Administrador/CatalogoPrograma'; 
 
+// Añadimos 'sistemas' al TabType
+type TabType = 'municipios' | 'roles' | 'ods' | 'proyectos' | 'tipos_accion' | 'categorias_beneficiarios' | 'permisos' | 'sistemas';
+
+// Añadimos el nuevo catálogo al menú
 const TABS: { id: TabType; label: string; icon: any }[] = [
   { id: 'municipios', label: 'Municipios', icon: MapPin },
   { id: 'roles', label: 'Roles', icon: Users },
@@ -17,6 +23,7 @@ const TABS: { id: TabType; label: string; icon: any }[] = [
   { id: 'tipos_accion', label: 'Tipos Acción', icon: Activity },
   { id: 'categorias_beneficiarios', label: 'Beneficiarios', icon: UserPlus },
   { id: 'permisos', label: 'Permisos', icon: ShieldCheck },
+  { id: 'sistemas', label: 'Programa', icon: Settings }, // <-- NUEVO TAB
 ];
 
 export default function AdminCatalogos() {
@@ -56,6 +63,8 @@ export default function AdminCatalogos() {
       if (resPermisos.data) setPermisosList(resPermisos.data);
       if (resRoles.data) setRolesParaPermisos(resRoles.data);
       if (resRolPerm.data) setRolPermisosActivos(resRolPerm.data);
+    } else if (activeTab === 'sistemas') {
+      // No hacemos fetch genérico, el componente CatalogoPrograma maneja su propia carga
     } else {
       let query;
       if (activeTab === 'proyectos') {
@@ -198,13 +207,18 @@ export default function AdminCatalogos() {
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-12">
       
-     
-      
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="p-6 md:p-8">
           
-          {/* VISTA: PERMISOS */}
-          {activeTab === 'permisos' ? (
+          {/* NUEVA VISTA: PROGRAMA / SISTEMAS */}
+          {activeTab === 'sistemas' ? (
+            <div className="animate-in fade-in duration-300">
+              <CatalogoPrograma />
+            </div>
+          ) : 
+          
+          /* VISTA: PERMISOS */
+          activeTab === 'permisos' ? (
             loading ? (
               <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                 <Loader2 className="animate-spin mb-4" size={32} />

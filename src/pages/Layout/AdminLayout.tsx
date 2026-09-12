@@ -16,7 +16,7 @@ const catalogos = [
   { id: 'tipos_accion', label: 'Tipos de Acción', icon: Activity, color: 'text-amber-500', dot: 'bg-amber-500' },
   { id: 'categorias_beneficiarios', label: 'Beneficiarios', icon: UserPlus, color: 'text-teal-500', dot: 'bg-teal-500' },
   { id: 'permisos', label: 'Permisos', icon: ShieldCheck, color: 'text-rose-500', dot: 'bg-rose-500' },
-];
+  { id: 'sistemas', label: 'Sistemas', icon: Globe, color: 'text-indigo-500', dot: 'bg-indigo-500' },];
 
 export default function AdminLayout() {
   const navigate = useNavigate();
