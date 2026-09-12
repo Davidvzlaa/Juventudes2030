@@ -7,8 +7,7 @@ import { supabase } from '@/lib/supabase';
 
 // === IMPORTA TU COMPONENTE PDF AQUÍ ===
 // (Asegúrate de que la ruta coincida con donde guardaste el archivo ReportePDF.tsx)
-import ReportePDF from '../../ReportePDF'; 
-
+import ReportePDF from '@/ReportePDF';
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 // ==========================================
