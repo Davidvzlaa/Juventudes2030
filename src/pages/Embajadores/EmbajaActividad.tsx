@@ -25,6 +25,7 @@ interface ActividadList {
   lugar: string;
   estado: string;
   municipios: { nombre: string } | null;
+  es_creador?: boolean; // Bandera para saber si el embajador puede editar/eliminar
 }
 
 export default function EmbajadorActividades() {
@@ -77,37 +78,98 @@ export default function EmbajadorActividades() {
     return `${Number(day)} de ${meses[Number(month) - 1]} del ${year}`;
   };
 
+  // =========================================================================
+  // CORRECCIÓN: FETCH DATA MEJORADO (Consulta Creadas + Asistidas)
+  // =========================================================================
   const fetchData = async () => {
     setLoading(true);
     
-    const { data: authData } = await supabase.auth.getUser();
-    const userId = authData.user?.id;
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData.user?.id;
 
-    let query = supabase
-      .from('actividades')
-      .select('id, nombre, fecha_evento, lugar, estado, municipios(nombre)')
-      .is('fecha_eliminacion', null)
-      .order('fecha_evento', { ascending: false });
+      if (!userId) throw new Error("No hay usuario autenticado.");
 
-    if (userId) {
-      query = query.eq('creado_por_usuario_id', userId);
+      // 1. Obtener actividades CREADAS por el embajador
+      const { data: actsCreadas, error: errCreadas } = await supabase
+        .from('actividades')
+        .select('id, nombre, fecha_evento, lugar, estado, creado_por_usuario_id, municipios(nombre)')
+        .is('fecha_eliminacion', null)
+        .eq('creado_por_usuario_id', userId);
+
+      if (errCreadas) throw errCreadas;
+
+      // 2. Obtener actividades a las que ASISTIÓ
+      const { data: actsUnidas, error: errUnidas } = await supabase
+        .from('actividad_asistentes')
+        .select(`
+          actividad_id,
+          actividades (
+            id, nombre, fecha_evento, lugar, estado, creado_por_usuario_id, municipios(nombre), fecha_eliminacion
+          )
+        `)
+        .eq('usuario_id', userId);
+
+      if (errUnidas) throw errUnidas;
+
+      // 3. Procesar y combinar evitando duplicados
+      const actividadesMap = new Map<number, ActividadList>();
+
+// Agregamos las creadas
+      actsCreadas?.forEach(act => {
+        actividadesMap.set(act.id, {
+          id: act.id,
+          nombre: act.nombre,
+          fecha_evento: act.fecha_evento,
+          lugar: act.lugar,
+          estado: act.estado,
+          // Extraemos el objeto si viene como arreglo
+          municipios: Array.isArray(act.municipios) ? act.municipios[0] : act.municipios,
+          es_creador: true // Bandera clave: Sí puede editarla
+        });
+      });
+
+      // Agregamos las asistidas (si no están ya en el Map y no están eliminadas)
+      actsUnidas?.forEach(item => {
+        // Extraemos el objeto de la actividad por si viene como arreglo
+        const act: any = Array.isArray(item.actividades) ? item.actividades[0] : item.actividades;
+
+        if (act && act.fecha_eliminacion === null && !actividadesMap.has(act.id)) {
+          actividadesMap.set(act.id, {
+            id: act.id,
+            nombre: act.nombre,
+            fecha_evento: act.fecha_evento,
+            lugar: act.lugar,
+            estado: act.estado,
+            // Extraemos el objeto del municipio si viene como arreglo
+            municipios: Array.isArray(act.municipios) ? act.municipios[0] : act.municipios,
+            es_creador: act.creado_por_usuario_id === userId 
+          });
+        }
+      });
+      // Convertimos el Map a Array y lo ordenamos por fecha descendente
+      const actividadesCombinadas = Array.from(actividadesMap.values()).sort((a, b) => {
+        return new Date(b.fecha_evento).getTime() - new Date(a.fecha_evento).getTime();
+      });
+
+      setActividades(actividadesCombinadas);
+
+      // 4. Cargar catálogos
+      const [resMun, resOds, resTipos] = await Promise.all([
+        supabase.from('municipios').select('id, nombre').eq('activo', true).order('nombre'),
+        supabase.from('ods').select('id, nombre, numero').eq('activo', true).order('numero', { ascending: true }),
+        supabase.from('tipos_accion').select('id, nombre').eq('activo', true).order('nombre')
+      ]);
+
+      if (resMun.data) setMunicipios(resMun.data);
+      if (resOds.data) setListaOds(resOds.data);
+      if (resTipos.data) setTiposAccion(resTipos.data);
+
+    } catch (error: any) {
+      toast.error("Error al cargar datos: " + error.message);
+    } finally {
+      setLoading(false);
     }
-
-    const { data: dataAct, error: actError } = await query;
-    if (actError) toast.error("Error al cargar las actividades");
-
-    const [resMun, resOds, resTipos] = await Promise.all([
-      supabase.from('municipios').select('id, nombre').eq('activo', true).order('nombre'),
-      supabase.from('ods').select('id, nombre, numero').eq('activo', true).order('numero', { ascending: true }),
-      supabase.from('tipos_accion').select('id, nombre').eq('activo', true).order('nombre')
-    ]);
-
-    if (dataAct) setActividades(dataAct as any);
-    if (resMun.data) setMunicipios(resMun.data);
-    if (resOds.data) setListaOds(resOds.data);
-    if (resTipos.data) setTiposAccion(resTipos.data);
-    
-    setLoading(false);
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -266,6 +328,9 @@ export default function EmbajadorActividades() {
 
         if (errAct || !nuevaActividad) throw new Error("Error al crear: " + errAct?.message);
         actividadId = nuevaActividad.id;
+        
+        // Registrar automáticamente al creador como asistente
+        await supabase.from('actividad_asistentes').insert([{ actividad_id: actividadId, usuario_id: userId }]);
       }
 
       const insertOdsData = odsSeleccionados.map((ods_id, idx) => ({
@@ -364,7 +429,7 @@ export default function EmbajadorActividades() {
                 Mis Actividades
               </h2>
               <p className="text-gray-500 mt-2">
-                Gestiona las actividades que coordinas en tu municipio. Añade nuevas o edita las existentes.
+                Gestiona las actividades que coordinas o en las que participas en tu municipio.
               </p>
             </div>
             <button 
@@ -434,9 +499,9 @@ export default function EmbajadorActividades() {
                   <thead>
                     <tr className="bg-gray-50 text-gray-600 border-b border-gray-200">
                       <th className="p-4 font-bold">Actividad</th>
+                      <th className="p-4 font-bold text-center">Tu Rol</th>
                       <th className="p-4 font-bold">Estado</th>
                       <th className="p-4 font-bold">Fecha</th>
-                      <th className="p-4 font-bold">Lugar Exacto</th>
                       <th className="p-4 font-bold">Municipio</th>
                       <th className="p-4 font-bold text-center">Acciones</th>
                     </tr>
@@ -445,6 +510,13 @@ export default function EmbajadorActividades() {
                     {actividadesFiltradas.map((a) => (
                       <tr key={a.id} className="hover:bg-blue-50/50 transition-colors">
                         <td className="p-4 font-medium text-gray-900">{a.nombre}</td>
+                        <td className="p-4 text-center">
+                          <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider inline-block ${
+                            a.es_creador ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {a.es_creador ? 'Creador' : 'Participante'}
+                          </span>
+                        </td>
                         <td className="p-4">
                           <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
                             a.estado === 'Borrador' 
@@ -455,29 +527,34 @@ export default function EmbajadorActividades() {
                           </span>
                         </td>
                         <td className="p-4 text-gray-600">{formatearFecha(a.fecha_evento)}</td>
-                        <td className="p-4 text-gray-600">{a.lugar}</td>
                         <td className="p-4">
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">
                             {a.municipios?.nombre || 'Sin asignar'}
                           </span>
                         </td>
-                        <td className="p-4 flex gap-2 justify-center">
-                          <button 
-                            type="button"
-                            onClick={() => handleEdit(a.id)}
-                            className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
-                            title="Editar"
-                          >
-                            <Edit size={18} />
-                          </button>
-                          <button 
-                            type="button"
-                            onClick={() => handleDeleteClick(a.id)}
-                            className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
-                            title="Eliminar"
-                          >
-                            <Trash2 size={18} />
-                          </button>
+                        <td className="p-4 flex gap-2 justify-center items-center h-full">
+                          {a.es_creador ? (
+                            <>
+                              <button 
+                                type="button"
+                                onClick={() => handleEdit(a.id)}
+                                className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                                title="Editar"
+                              >
+                                <Edit size={18} />
+                              </button>
+                              <button 
+                                type="button"
+                                onClick={() => handleDeleteClick(a.id)}
+                                className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                                title="Eliminar"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-[11px] text-gray-400 italic px-2 py-1">Solo lectura</span>
+                          )}
                         </td>
                       </tr>
                     ))}
