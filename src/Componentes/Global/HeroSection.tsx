@@ -35,13 +35,13 @@ export default function HeroSection() {
           </p>
 
           <div className="mt-5 flex flex-wrap gap-4">
-            <a href="#acciones" className="group flex items-center gap-3 bg-white px-6 py-3.5 text-sm font-semibold text-[#061A2D] transition hover:bg-gray-100">
+            <a href="/acercade" className="group flex items-center gap-3 bg-white px-6 py-3.5 text-sm font-semibold text-[#061A2D] transition hover:bg-gray-100">
               Conoce el proyecto
               <ArrowRight size={17} className="transition-transform group-hover:translate-x-1" />
             </a>
-            <a href="#eventos" className="flex items-center gap-3 border border-white/40 px-6 py-3.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/10">
+            {/* <a href="#eventos" className="flex items-center gap-3 border border-white/40 px-6 py-3.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/10">
               Ver actividades
-            </a>
+            </a> */}
           </div>
         </div>
       </div>
