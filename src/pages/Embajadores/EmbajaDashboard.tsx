@@ -9,6 +9,7 @@ import {
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { toast } from 'sonner';
 
 // Mismos tipos que el Calendario para mantener compatibilidad total en el Drawer
 interface Actividad {
@@ -19,6 +20,29 @@ interface Actividad {
   actividad_ods: { ods_id: number; ods: { numero: number; nombre: string } }[];
   actividad_acciones: { tipo_accion_id: number; cantidad: number; tipos_accion: { nombre: string } }[];
 }
+
+// Función auxiliar para emitir la notificación con sonido y posición inferior derecha
+const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+  const audio = new Audio('/notification.mp3');
+  audio.volume = 0.5;
+  audio.play().catch(err => console.log('Audio bloqueado por el navegador:', err));
+
+  const options = { position: 'bottom-right' as const };
+
+  switch (type) {
+    case 'success':
+      toast.success(message, options);
+      break;
+    case 'error':
+      toast.error(message, options);
+      break;
+    case 'warning':
+      toast.warning(message, options);
+      break;
+    default:
+      toast.info(message, options);
+  }
+};
 
 export default function EmbajadorInicio() {
   const { usuarioDatos } = useAuth();
@@ -35,7 +59,7 @@ export default function EmbajadorInicio() {
   const [eventoSeleccionado, setEventoSeleccionado] = useState<Actividad | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
-// Estado para calcular el margen superior dinámico
+  // Estado para calcular el margen superior dinámico
   const [espacioSuperior, setEspacioSuperior] = useState(88); // Valor por defecto seguro
 
   useEffect(() => {
@@ -203,7 +227,12 @@ export default function EmbajadorInicio() {
       const { error } = await supabase.from('actividad_asistentes').insert({ actividad_id: eventoSeleccionado.id, usuario_id: usuarioDatos.id });
       if (error) throw error;
       await fetchDashboardData(); // Esto actualizará el Drawer y pasará la actividad a "Mi Agenda" al instante.
-    } catch (error: any) { alert("Error al unirte: " + error.message); } finally { setIsJoining(false); }
+      notifyWithSound('¡Te has unido a la actividad con éxito!', 'success');
+    } catch (error: any) { 
+      notifyWithSound("Error al unirte: " + error.message, 'error'); 
+    } finally { 
+      setIsJoining(false); 
+    }
   };
 
   const irAEditar = (actividad: Actividad) => {
@@ -212,22 +241,30 @@ export default function EmbajadorInicio() {
   };
 
   const handleEliminar = async (id: number) => {
+    // window.confirm se mantiene porque es un dialog de confirmación de doble paso (prevenir clics accidentales)
     if (!window.confirm('¿Estás seguro de eliminar permanentemente esta actividad?')) return;
     try {
       const { error } = await supabase.from('actividades').update({ fecha_eliminacion: new Date().toISOString() }).eq('id', id);
       if (error) throw error;
       setIsSidebarOpen(false);
       fetchDashboardData();
-    } catch (error) { alert('Error al eliminar.'); }
+      notifyWithSound('Actividad eliminada permanentemente.', 'success');
+    } catch (error) { 
+      notifyWithSound('Error al eliminar la actividad.', 'error'); 
+    }
   };
 
   const handleCancelarEvento = async (id: number) => {
+    // window.confirm se mantiene para confirmar la cancelación (acción destructiva)
     if (!window.confirm('¿Deseas marcar esta actividad como Cancelada?')) return;
     try {
       const { error } = await supabase.from('actividades').update({ estado: 'Cancelada' }).eq('id', id);
       if (error) throw error;
       await fetchDashboardData();
-    } catch (error) { alert('Error al cancelar.'); }
+      notifyWithSound('La actividad ha sido cancelada con éxito.', 'success');
+    } catch (error) { 
+      notifyWithSound('Error al cancelar la actividad.', 'error'); 
+    }
   };
   // Bloquear el scroll del cuerpo de la página cuando el panel está abierto
   useEffect(() => {
@@ -239,6 +276,7 @@ export default function EmbajadorInicio() {
     // Limpieza de seguridad si el componente se desmonta
     return () => { document.body.style.overflow = 'auto'; };
   }, [isSidebarOpen]);
+  
   if (loading) {
     return (
       <div className="flex flex-col h-[70vh] items-center justify-center space-y-4">

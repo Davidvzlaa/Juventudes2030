@@ -19,10 +19,12 @@ import { AuthProvider } from './hooks/useAuth';
 import EmbajaCalendario from './pages/Embajadores/EmbajaCalendario';
 import AdminCalendario from './pages/Administrador/AdminCalendario';
 import AdminActividades from './pages/Administrador/AdminActividades';
+import { Toaster } from './components/ui/sonner';
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+      <Toaster position="bottom-right" richColors duration={4000} />
         <Routes>
         <Route path="/" element={<PaginaPrincipal />} />
         <Route path="/Login" element={<Login />} />
