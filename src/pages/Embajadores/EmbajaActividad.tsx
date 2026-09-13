@@ -1,529 +1,635 @@
-// import { useState, useEffect } from 'react';
-// import { useNavigate, useLocation } from 'react-router-dom';
-// import { Save, Send, X, Target, Globe, MapPin, FileText, Ban } from 'lucide-react';
-// import { supabase } from '../../lib/supabase';
-// import { useAuth } from '../../hooks/useAuth';
-
-// export default function EmbajadorActividades() {
-//   const { usuarioDatos } = useAuth();
-//   const navigate = useNavigate();
-//   const location = useLocation(); 
-  
-//   const actToEdit = location.state?.actToEdit; 
-//   const isPublicada = actToEdit && actToEdit.estado !== 'Borrador';
-
-//   const [isSaving, setIsSaving] = useState(false);
-//   const [editId, setEditId] = useState<number | null>(null);
-
-//   const [municipios, setMunicipios] = useState<any[]>([]);
-//   const [odsList, setOdsList] = useState<any[]>([]);
-//   const [tiposAccion, setTiposAccion] = useState<any[]>([]); 
-//   const [miProyectoPredeterminado, setMiProyectoPredeterminado] = useState<number | null>(null);
-
-//   const getTodayString = () => {
-//     const today = new Date();
-//     const y = today.getFullYear();
-//     const m = String(today.getMonth() + 1).padStart(2, '0');
-//     const d = String(today.getDate()).padStart(2, '0');
-//     return `${y}-${m}-${d}`;
-//   };
-
-//   const todayString = getTodayString();
-
-//   const [formData, setFormData] = useState({
-//     nombre: '', descripcion: '', fecha_evento: todayString, hora_inicio: '', hora_fin: '',
-//     municipio_id: 0, lugar: '', direccion: '', calle: '', colonia: '',
-//     tipo_accion: '', cantidad_accion: 1, ods_seleccionados: [] as number[]
-//   });
-
-//   useEffect(() => {
-//     const fetchData = async () => {
-//       if (!usuarioDatos?.id) return;
-      
-//       const { data: embajador } = await supabase.from('embajadores').select('municipio_id, proyecto_social_id').eq('usuario_id', usuarioDatos.id).single();
-//       if (embajador) {
-//         setMiProyectoPredeterminado(embajador.proyecto_social_id);
-//         if (!actToEdit) setFormData(prev => ({ ...prev, municipio_id: embajador.municipio_id }));
-//       }
-
-//       const [resMun, resOds, resTipos] = await Promise.all([
-//         supabase.from('municipios').select('id, nombre').eq('activo', true).order('nombre'),
-//         supabase.from('ods').select('id, numero, nombre').eq('activo', true).order('numero'),
-//         supabase.from('tipos_accion').select('id, nombre').eq('activo', true).order('nombre')
-//       ]);
-//       if (resMun.data) setMunicipios(resMun.data);
-//       if (resOds.data) setOdsList(resOds.data);
-//       if (resTipos.data) setTiposAccion(resTipos.data);
-//     };
-
-//     fetchData();
-
-//     if (actToEdit) {
-//       setEditId(actToEdit.id);
-//       const fechaLimpia = actToEdit.fecha_evento ? actToEdit.fecha_evento.split('T')[0] : todayString;
-
-//       setFormData({
-//         nombre: actToEdit.nombre || '', descripcion: actToEdit.descripcion || '',
-//         fecha_evento: fechaLimpia, hora_inicio: actToEdit.hora_inicio || '', hora_fin: actToEdit.hora_fin || '',
-//         municipio_id: actToEdit.municipio_id || 0, lugar: actToEdit.lugar || '', direccion: actToEdit.direccion || '',
-//         calle: actToEdit.calle || '', colonia: actToEdit.colonia || '',
-//         tipo_accion: actToEdit.actividad_acciones?.[0]?.tipo || '', cantidad_accion: actToEdit.actividad_acciones?.[0]?.cantidad || 1,
-//         ods_seleccionados: actToEdit.actividad_ods?.map((o: any) => o.ods_id) || []
-//       });
-//     }
-//   }, [usuarioDatos, actToEdit]);
-
-//   const toggleOds = (odsId: number) => {
-//     setFormData(prev => {
-//       if (prev.ods_seleccionados.includes(odsId)) return { ...prev, ods_seleccionados: prev.ods_seleccionados.filter(id => id !== odsId) };
-//       if (prev.ods_seleccionados.length >= 4) { alert('Solo puedes seleccionar un máximo de 4 ODS.'); return prev; }
-//       return { ...prev, ods_seleccionados: [...prev.ods_seleccionados, odsId] };
-//     });
-//   };
-
-//   const handleGuardarActividad = async (estadoFinal: string) => {
-//     if (!usuarioDatos?.id) return;
-
-//     if (!formData.nombre.trim()) return alert('Debes asignarle un nombre a la actividad para guardar.');
-
-//     if (estadoFinal !== 'Borrador') {
-//       if (!formData.tipo_accion) return alert('El Tipo de Acción Principal es obligatorio.');
-//       if (!formData.descripcion.trim()) return alert('La descripción de la actividad es obligatoria.');
-//       if (formData.ods_seleccionados.length === 0) return alert('Debes alinear la actividad con al menos un ODS.');
-//       if (!formData.fecha_evento) return alert('La fecha del evento es obligatoria.');
-//       if (formData.fecha_evento < todayString) return alert('La fecha de la actividad no puede ser anterior al día de hoy.');
-//       if (!formData.hora_inicio) return alert('La hora de inicio es obligatoria.');
-//       if (!formData.hora_fin) return alert('La hora de fin es obligatoria.');
-//       if (formData.hora_inicio >= formData.hora_fin) return alert('La hora de inicio debe ser previa a la hora de fin.');
-//       if (!formData.municipio_id || formData.municipio_id === 0) return alert('Selecciona el municipio.');
-//       if (!formData.lugar.trim()) return alert('El lugar exacto donde se llevará a cabo es obligatorio.');
-//     }
-
-//     setIsSaving(true);
-//     try {
-//       const payloadActividad = {
-//         nombre: (formData.nombre || '').trim(),
-//         descripcion: (formData.descripcion || '').trim() || null,
-//         fecha_evento: formData.fecha_evento || null,
-//         hora_inicio: formData.hora_inicio || null,
-//         hora_fin: formData.hora_fin || null,
-//         municipio_id: formData.municipio_id,
-//         lugar: (formData.lugar || '').trim() || null,
-//         direccion: (formData.direccion || '').trim() || null,
-//         calle: (formData.calle || '').trim() || null,
-//         colonia: (formData.colonia || '').trim() || null,
-//         proyecto_social_id: miProyectoPredeterminado,
-//         estado: estadoFinal,
-//       };
-
-//       let actividadActualId = editId;
-
-//       if (editId) {
-//         const { error: errUpdate } = await supabase.from('actividades').update(payloadActividad).eq('id', editId);
-//         if (errUpdate) throw new Error("No se pudo actualizar la actividad: " + errUpdate.message);
-
-//         const { error: errDelOds } = await supabase.from('actividad_ods').delete().eq('actividad_id', editId);
-//         if (errDelOds) throw new Error("Error limpiando ODS: " + errDelOds.message);
-
-//         const { error: errDelAcc } = await supabase.from('actividad_acciones').delete().eq('actividad_id', editId);
-//         if (errDelAcc) throw new Error("Error limpiando Acciones: " + errDelAcc.message);
-//       } else {
-//         const { data: nuevaAct, error } = await supabase.from('actividades').insert([{ ...payloadActividad, creado_por_usuario_id: usuarioDatos.id }]).select('id').single();
-//         if (error) throw new Error("No se pudo crear la actividad: " + error.message);
-//         actividadActualId = nuevaAct.id;
-//       }
-
-//       if (actividadActualId) {
-//         if (formData.ods_seleccionados.length > 0) {
-//           const odsPayload = formData.ods_seleccionados.map((odsId, idx) => ({ actividad_id: actividadActualId, ods_id: odsId, es_principal: idx === 0 }));
-//           const { error: errOds } = await supabase.from('actividad_ods').insert(odsPayload);
-//           if (errOds) throw new Error("Error al asignar los ODS: " + errOds.message);
-//         }
-
-//         if (formData.tipo_accion) {
-//           const { error: errAccion } = await supabase.from('actividad_acciones').insert([{ actividad_id: actividadActualId, tipo: formData.tipo_accion, cantidad: formData.cantidad_accion }]);
-//           if (errAccion) throw new Error("Error al asignar el Tipo de Acción: " + errAccion.message);
-//         }
-//       }
-
-//       alert(estadoFinal === 'Borrador' ? 'Borrador guardado exitosamente.' : estadoFinal === 'Cancelada' ? 'Actividad cancelada.' : '¡Actividad programada en el calendario!');
-//       navigate('/embajador/calendario');
-//     } catch (error: any) { alert(error.message); } finally { setIsSaving(false); }
-//   };
-
-//   return (
-//     <div className="max-w-4xl mx-auto pb-12 animate-in fade-in duration-500">
-//       <div className="bg-white rounded-2xl shadow-md border-t-4 border-[#00689D] p-6 md:p-8">
-//         <div className="mb-8 border-b border-gray-100 pb-4">
-//           <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 flex items-center gap-3">
-//             <FileText className="text-[#00689D]" size={32} /> {editId ? 'Editar Actividad' : 'Alta de Actividad'}
-//           </h2>
-//           <p className="text-gray-500 mt-2">
-//             {isPublicada ? 'Actualiza los datos de tu actividad publicada.' : 'Guárdala como borrador para continuar luego, o completa todos los campos para publicarla.'}
-//           </p>
-//         </div>
-
-//         <form className="space-y-8" onSubmit={(e) => e.preventDefault()}>
-//           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-gray-50/50 p-6 rounded-xl border border-gray-200">
-//             <h3 className="md:col-span-2 text-lg font-bold text-[#00689D] flex items-center gap-2"><Target size={18}/> Datos Generales</h3>
-//             <div className="md:col-span-2">
-//               <label className="block text-sm font-bold text-gray-700 mb-1">Nombre de la Actividad <span className="text-red-500">*</span></label>
-//               <input type="text" className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.nombre} onChange={e => setFormData({ ...formData, nombre: e.target.value })} placeholder="Ej. Taller de Reforestación Juvenil" />
-//             </div>
-//             <div className="md:col-span-2">
-//               <label className="block text-sm font-bold text-gray-700 mb-1">Tipo de Acción Principal {!isPublicada && <span className="text-xs font-normal text-gray-400">(Requerido al publicar)</span>}</label>
-//               <select className="w-full p-3 border border-gray-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.tipo_accion} onChange={e => setFormData({ ...formData, tipo_accion: e.target.value })}>
-//                 <option value="">-- Selecciona --</option>
-//                 {tiposAccion.map(tipo => <option key={tipo.id} value={tipo.nombre}>{tipo.nombre}</option>)}
-//               </select>
-//             </div>
-//             <div className="md:col-span-2">
-//               <label className="block text-sm font-bold text-gray-700 mb-1">Descripción {!isPublicada && <span className="text-xs font-normal text-gray-400">(Requerido al publicar)</span>}</label>
-//               <textarea rows={3} className="w-full p-3 border border-gray-300 rounded-lg resize-none outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.descripcion} onChange={e => setFormData({ ...formData, descripcion: e.target.value })} placeholder="Explica el objetivo, dinámicas o requerimientos..." />
-//             </div>
-//           </div>
-
-//           <div className="bg-blue-50/30 p-6 rounded-xl border border-blue-100">
-//             <h3 className="font-bold text-[#00689D] mb-1 flex items-center gap-2"><Globe size={18}/> Alineación Agenda 2030 (Máx. 4)</h3>
-//             <p className="text-xs text-gray-500 mb-4">Selecciona al menos 1 ODS antes de publicar.</p>
-//             <div className="flex flex-wrap gap-2">
-//               {odsList.map(ods => {
-//                 const isSelected = formData.ods_seleccionados.includes(ods.id);
-//                 return (
-//                   <button key={ods.id} type="button" onClick={() => toggleOds(ods.id)} className={`px-3 py-2 rounded-lg border text-sm font-semibold flex items-center gap-2 transition-all ${isSelected ? 'bg-[#00689D] text-white border-[#00689D]' : 'bg-white text-gray-600 hover:border-[#00689D]'}`}>
-//                     <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${isSelected ? 'bg-white text-[#00689D]' : 'bg-gray-100'}`}>{ods.numero}</span>
-//                     {ods.nombre}
-//                   </button>
-//                 );
-//               })}
-//             </div>
-//           </div>
-
-//           <div className="grid grid-cols-1 md:grid-cols-3 gap-5 bg-gray-50/50 p-6 rounded-xl border border-gray-200">
-//             <h3 className="md:col-span-3 text-lg font-bold text-[#00689D] flex items-center gap-2"><MapPin size={18}/> Cuándo y Dónde</h3>
-//             <div><label className="block text-sm font-bold text-gray-700 mb-1">Fecha {!isPublicada && <span className="text-xs font-normal text-gray-400">(Obligatorio)</span>}</label><input type="date" min={todayString} className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.fecha_evento} onChange={e => setFormData({ ...formData, fecha_evento: e.target.value })} /></div>
-//             <div><label className="block text-sm font-bold text-gray-700 mb-1">Hora Inicio</label><input type="time" className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.hora_inicio} onChange={e => setFormData({ ...formData, hora_inicio: e.target.value })} /></div>
-//             <div><label className="block text-sm font-bold text-gray-700 mb-1">Hora Fin</label><input type="time" className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.hora_fin} onChange={e => setFormData({ ...formData, hora_fin: e.target.value })} /></div>
-//             <div>
-//               <label className="block text-sm font-bold text-gray-700 mb-1">Municipio</label>
-//               <select className="w-full p-3 border border-gray-300 rounded-lg outline-none bg-white focus:ring-2 focus:ring-[#00689D]" value={formData.municipio_id} onChange={e => setFormData({ ...formData, municipio_id: Number(e.target.value) })}>
-//                 {municipios.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-//               </select>
-//             </div>
-//             <div className="md:col-span-2"><label className="block text-sm font-bold text-gray-700 mb-1">Lugar Exacto</label><input type="text" className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.lugar} onChange={e => setFormData({ ...formData, lugar: e.target.value })} placeholder="Ej. Kiosco Central de la Plazuela" /></div>
-            
-//             <div className="md:col-span-3 pt-2">
-//               <label className="block text-sm font-bold text-gray-700 mb-1">Dirección Detallada <span className="text-xs font-normal text-gray-400">(Opcional)</span></label>
-//               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-//                 <input type="text" className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.calle} onChange={e => setFormData({ ...formData, calle: e.target.value })} placeholder="Calle y número" />
-//                 <input type="text" className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.colonia} onChange={e => setFormData({ ...formData, colonia: e.target.value })} placeholder="Colonia o Sector" />
-//                 <input type="text" className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.direccion} onChange={e => setFormData({ ...formData, direccion: e.target.value })} placeholder="Referencias (Ej. Entre Morelos y Zaragoza)" />
-//               </div>
-//             </div>
-//           </div>
-
-//           <div className="flex flex-col sm:flex-row justify-end items-center gap-3 pt-6 border-t border-gray-100">
-//             <button type="button" onClick={() => navigate('/embajador/calendario')} className="w-full sm:w-auto px-6 py-3 font-bold text-gray-600 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
-//               <X size={18} className="inline mr-1" /> {isPublicada ? 'Descartar Cambios' : 'Cancelar'}
-//             </button>
-            
-//             {isPublicada ? (
-//               <>
-//                 {actToEdit.estado !== 'Cancelada' && (
-//                   <button type="button" disabled={isSaving} onClick={() => handleGuardarActividad('Cancelada')} className="w-full sm:w-auto px-6 py-3 font-bold text-red-700 bg-red-50 border border-red-200 rounded-xl hover:bg-red-100 transition-colors">
-//                     <Ban size={18} className="inline mr-1" /> Cancelar Evento
-//                   </button>
-//                 )}
-//                 <button type="button" disabled={isSaving} onClick={() => handleGuardarActividad(actToEdit.estado === 'Cancelada' ? 'Programada' : actToEdit.estado)} className="w-full sm:w-auto px-8 py-3 font-bold text-white bg-[#00689D] rounded-xl hover:bg-[#00527A] shadow-md transition-all disabled:opacity-50">
-//                   <Save size={18} className="inline mr-1" /> Guardar Cambios
-//                 </button>
-//               </>
-//             ) : (
-//               <>
-//                 <button type="button" disabled={isSaving} onClick={() => handleGuardarActividad('Borrador')} className="w-full sm:w-auto px-6 py-3 font-bold text-gray-700 bg-gray-100 border border-gray-200 rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-50">
-//                   <Save size={18} className="inline mr-1 text-gray-500" /> Guardar Borrador
-//                 </button>
-//                 <button type="button" disabled={isSaving} onClick={() => handleGuardarActividad('Programada')} className="w-full sm:w-auto px-8 py-3 font-bold text-white bg-[#00689D] rounded-xl hover:bg-[#00527A] shadow-md transition-all disabled:opacity-50">
-//                   <Send size={18} className="inline mr-1" /> Publicar en Calendario
-//                 </button>
-//               </>
-//             )}
-//           </div>
-//         </form>
-//       </div>
-//     </div>
-//   );
-// }
-import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Save, Send, X, Target, Globe, MapPin, FileText, Ban } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../hooks/useAuth';
+import { Save, Target, Globe, MapPin, FileText, List, Edit, Trash2, X, Archive, Plus, Filter } from 'lucide-react';
+import { toast } from 'sonner';
+
+// Importamos el AlertDialog de shadcn (Ajusta la ruta si es diferente en tu proyecto)
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
+// Tipados base
+interface Ods { id: number; nombre: string; numero: number; }
+interface Catalogo { id: number; nombre: string; }
+interface ActividadList {
+  id: number;
+  nombre: string;
+  fecha_evento: string;
+  lugar: string;
+  estado: string;
+  municipios: { nombre: string } | null;
+}
 
 export default function EmbajadorActividades() {
-  const { usuarioDatos } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation(); 
+  const [actividades, setActividades] = useState<ActividadList[]>([]);
+  const [municipios, setMunicipios] = useState<Catalogo[]>([]);
+  const [tiposAccion, setTiposAccion] = useState<Catalogo[]>([]);
+  const [listaOds, setListaOds] = useState<Ods[]>([]);
   
-  const actToEdit = location.state?.actToEdit; 
-  const isPublicada = actToEdit && actToEdit.estado !== 'Borrador';
-
+  const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [editId, setEditId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
 
-  const [municipios, setMunicipios] = useState<any[]>([]);
-  const [odsList, setOdsList] = useState<any[]>([]);
-  const [tiposAccion, setTiposAccion] = useState<any[]>([]); 
-  const [miProyectoPredeterminado, setMiProyectoPredeterminado] = useState<number | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [filterEstado, setFilterEstado] = useState('Todos');
+  const [filterFecha, setFilterFecha] = useState('Todos');
 
-  const getTodayString = () => {
-    const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth() + 1).padStart(2, '0');
-    const d = String(today.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  };
-
-  const todayString = getTodayString();
+  // --- ESTADOS PARA LOS MODALES DE SHADCN ---
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [activityToDelete, setActivityToDelete] = useState<number | null>(null);
 
   const [formData, setFormData] = useState({
-    nombre: '', descripcion: '', fecha_evento: todayString, hora_inicio: '', hora_fin: '',
-    municipio_id: 0, lugar: '', direccion: '', calle: '', colonia: '',
-    tipo_accion: '', cantidad_accion: 1, ods_seleccionados: [] as number[]
+    nombre: '', 
+    descripcion: '', 
+    tipo_accion_id: 0,
+    fecha_evento: '', 
+    hora_inicio: '', 
+    hora_fin: '',
+    municipio_id: 0,
+    lugar: '', 
+    calle: '', 
+    colonia: '', 
+    direccion: '',
+    estado: 'Programada'
   });
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!usuarioDatos?.id) return;
-      
-      const { data: embajador } = await supabase.from('embajadores').select('municipio_id, proyecto_social_id').eq('usuario_id', usuarioDatos.id).single();
-      if (embajador) {
-        setMiProyectoPredeterminado(embajador.proyecto_social_id);
-        if (!actToEdit) setFormData(prev => ({ ...prev, municipio_id: embajador.municipio_id }));
-      }
+  const [odsSeleccionados, setOdsSeleccionados] = useState<number[]>([]);
 
-      const [resMun, resOds, resTipos] = await Promise.all([
-        supabase.from('municipios').select('id, nombre').eq('activo', true).order('nombre'),
-        supabase.from('ods').select('id, numero, nombre').eq('activo', true).order('numero'),
-        supabase.from('tipos_accion').select('id, nombre').eq('activo', true).order('nombre')
-      ]);
-      if (resMun.data) setMunicipios(resMun.data);
-      if (resOds.data) setOdsList(resOds.data);
-      if (resTipos.data) setTiposAccion(resTipos.data);
-
-      if (actToEdit) {
-        setEditId(actToEdit.id);
-        const fechaLimpia = actToEdit.fecha_evento ? actToEdit.fecha_evento.split('T')[0] : todayString;
-
-        // Buscamos el nombre de la acción usando el ID que viene de la base de datos
-        let nombreAccionEdit = '';
-        if (actToEdit.actividad_acciones?.[0]?.tipo_accion_id && resTipos.data) {
-          const accionEncontrada = resTipos.data.find(t => t.id === actToEdit.actividad_acciones[0].tipo_accion_id);
-          if (accionEncontrada) nombreAccionEdit = accionEncontrada.nombre;
-        }
-
-        setFormData({
-          nombre: actToEdit.nombre || '', descripcion: actToEdit.descripcion || '',
-          fecha_evento: fechaLimpia, hora_inicio: actToEdit.hora_inicio || '', hora_fin: actToEdit.hora_fin || '',
-          municipio_id: actToEdit.municipio_id || 0, lugar: actToEdit.lugar || '', direccion: actToEdit.direccion || '',
-          calle: actToEdit.calle || '', colonia: actToEdit.colonia || '',
-          tipo_accion: nombreAccionEdit, 
-          cantidad_accion: actToEdit.actividad_acciones?.[0]?.cantidad || 1,
-          ods_seleccionados: actToEdit.actividad_ods?.map((o: any) => o.ods_id) || []
-        });
-      }
-    };
-
-    fetchData();
-  }, [usuarioDatos, actToEdit]);
-
-  const toggleOds = (odsId: number) => {
-    setFormData(prev => {
-      if (prev.ods_seleccionados.includes(odsId)) return { ...prev, ods_seleccionados: prev.ods_seleccionados.filter(id => id !== odsId) };
-      if (prev.ods_seleccionados.length >= 4) { alert('Solo puedes seleccionar un máximo de 4 ODS.'); return prev; }
-      return { ...prev, ods_seleccionados: [...prev.ods_seleccionados, odsId] };
-    });
+  const getTodayStr = () => {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
   };
 
-  const handleGuardarActividad = async (estadoFinal: string) => {
-    if (!usuarioDatos?.id) return;
+  const formatearFecha = (fechaStr: string) => {
+    if (!fechaStr) return '';
+    const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    const [year, month, day] = fechaStr.split('T')[0].split('-');
+    return `${Number(day)} de ${meses[Number(month) - 1]} del ${year}`;
+  };
 
-    if (!formData.nombre.trim()) return alert('Debes asignarle un nombre a la actividad para guardar.');
+  const fetchData = async () => {
+    setLoading(true);
+    
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData.user?.id;
 
-    if (estadoFinal !== 'Borrador') {
-      if (!formData.tipo_accion) return alert('El Tipo de Acción Principal es obligatorio.');
-      if (!formData.descripcion.trim()) return alert('La descripción de la actividad es obligatoria.');
-      if (formData.ods_seleccionados.length === 0) return alert('Debes alinear la actividad con al menos un ODS.');
-      if (!formData.fecha_evento) return alert('La fecha del evento es obligatoria.');
-      if (formData.fecha_evento < todayString) return alert('La fecha de la actividad no puede ser anterior al día de hoy.');
-      if (!formData.hora_inicio) return alert('La hora de inicio es obligatoria.');
-      if (!formData.hora_fin) return alert('La hora de fin es obligatoria.');
-      if (formData.hora_inicio >= formData.hora_fin) return alert('La hora de inicio debe ser previa a la hora de fin.');
-      if (!formData.municipio_id || formData.municipio_id === 0) return alert('Selecciona el municipio.');
-      if (!formData.lugar.trim()) return alert('El lugar exacto donde se llevará a cabo es obligatorio.');
+    let query = supabase
+      .from('actividades')
+      .select('id, nombre, fecha_evento, lugar, estado, municipios(nombre)')
+      .is('fecha_eliminacion', null)
+      .order('fecha_evento', { ascending: false });
+
+    if (userId) {
+      query = query.eq('creado_por_usuario_id', userId);
     }
 
-    setIsSaving(true);
-    try {
-      const payloadActividad = {
-        nombre: (formData.nombre || '').trim(),
-        descripcion: (formData.descripcion || '').trim() || null,
-        fecha_evento: formData.fecha_evento || null,
-        hora_inicio: formData.hora_inicio || null,
-        hora_fin: formData.hora_fin || null,
-        municipio_id: formData.municipio_id,
-        lugar: (formData.lugar || '').trim() || null,
-        direccion: (formData.direccion || '').trim() || null,
-        calle: (formData.calle || '').trim() || null,
-        colonia: (formData.colonia || '').trim() || null,
-        proyecto_social_id: miProyectoPredeterminado,
-        estado: estadoFinal,
-      };
+    const { data: dataAct, error: actError } = await query;
+    if (actError) toast.error("Error al cargar las actividades");
 
-      let actividadActualId = editId;
+    const [resMun, resOds, resTipos] = await Promise.all([
+      supabase.from('municipios').select('id, nombre').eq('activo', true).order('nombre'),
+      supabase.from('ods').select('id, nombre, numero').eq('activo', true).order('numero', { ascending: true }),
+      supabase.from('tipos_accion').select('id, nombre').eq('activo', true).order('nombre')
+    ]);
 
-      if (editId) {
-        const { error: errUpdate } = await supabase.from('actividades').update(payloadActividad).eq('id', editId);
-        if (errUpdate) throw new Error("No se pudo actualizar la actividad: " + errUpdate.message);
-
-        const { error: errDelOds } = await supabase.from('actividad_ods').delete().eq('actividad_id', editId);
-        if (errDelOds) throw new Error("Error limpiando ODS: " + errDelOds.message);
-
-        const { error: errDelAcc } = await supabase.from('actividad_acciones').delete().eq('actividad_id', editId);
-        if (errDelAcc) throw new Error("Error limpiando Acciones: " + errDelAcc.message);
-      } else {
-        const { data: nuevaAct, error } = await supabase.from('actividades').insert([{ ...payloadActividad, creado_por_usuario_id: usuarioDatos.id }]).select('id').single();
-        if (error) throw new Error("No se pudo crear la actividad: " + error.message);
-        actividadActualId = nuevaAct.id;
-      }
-
-      if (actividadActualId) {
-        if (formData.ods_seleccionados.length > 0) {
-          const odsPayload = formData.ods_seleccionados.map((odsId, idx) => ({ actividad_id: actividadActualId, ods_id: odsId, es_principal: idx === 0 }));
-          const { error: errOds } = await supabase.from('actividad_ods').insert(odsPayload);
-          if (errOds) throw new Error("Error al asignar los ODS: " + errOds.message);
-        }
-
-        if (formData.tipo_accion) {
-          // Buscamos el ID numérico correspondiente al nombre seleccionado en el combo
-          const tipoObj = tiposAccion.find(t => t.nombre === formData.tipo_accion);
-          if (tipoObj) {
-            // AQUÍ ESTÁ LA CORRECCIÓN: Se envía tipo_accion_id en lugar de tipo
-            const { error: errAccion } = await supabase.from('actividad_acciones').insert([{ 
-              actividad_id: actividadActualId, 
-              tipo_accion_id: tipoObj.id, 
-              cantidad: formData.cantidad_accion 
-            }]);
-            if (errAccion) throw new Error("Error al asignar el Tipo de Acción: " + errAccion.message);
-          }
-        }
-      }
-
-      alert(estadoFinal === 'Borrador' ? 'Borrador guardado exitosamente.' : estadoFinal === 'Cancelada' ? 'Actividad cancelada.' : '¡Actividad programada en el calendario!');
-      navigate('/embajador/calendario');
-    } catch (error: any) { alert(error.message); } finally { setIsSaving(false); }
+    if (dataAct) setActividades(dataAct as any);
+    if (resMun.data) setMunicipios(resMun.data);
+    if (resOds.data) setListaOds(resOds.data);
+    if (resTipos.data) setTiposAccion(resTipos.data);
+    
+    setLoading(false);
   };
 
+  useEffect(() => { fetchData(); }, []);
+
+  const toggleOds = (idOds: number) => {
+    setOdsSeleccionados(prev => 
+      prev.includes(idOds) ? prev.filter(id => id !== idOds) : [...prev, idOds]
+    );
+  };
+
+  const handleEdit = async (id: number) => {
+    const loadingToast = toast.loading('Cargando actividad...');
+    try {
+      const { data: act, error } = await supabase.from('actividades').select('*').eq('id', id).single();
+      if (error) throw error;
+
+      const { data: ods } = await supabase.from('actividad_ods').select('ods_id').eq('actividad_id', id);
+      const { data: acciones } = await supabase.from('actividad_acciones').select('tipo_accion_id').eq('actividad_id', id).single();
+
+      setFormData({
+        nombre: act.nombre || '',
+        descripcion: act.descripcion || '',
+        tipo_accion_id: acciones ? acciones.tipo_accion_id : 0,
+        fecha_evento: act.fecha_evento ? act.fecha_evento.split('T')[0] : '',
+        hora_inicio: act.hora_inicio ? act.hora_inicio.substring(0, 5) : '',
+        hora_fin: act.hora_fin ? act.hora_fin.substring(0, 5) : '',
+        municipio_id: act.municipio_id || 0,
+        lugar: act.lugar || '',
+        calle: act.calle || '',
+        colonia: act.colonia || '',
+        direccion: act.direccion || '',
+        estado: act.estado || 'Programada'
+      });
+      
+      setOdsSeleccionados(ods ? ods.map((o: any) => o.ods_id) : []);
+      setEditingId(id);
+      setShowForm(true); 
+      
+      toast.dismiss(loadingToast);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (error: any) {
+      toast.error('Error al cargar la actividad: ' + error.message, { id: loadingToast });
+    }
+  };
+
+  // Prepara la eliminación abriendo el modal
+  const handleDeleteClick = (id: number) => {
+    setActivityToDelete(id);
+  };
+
+  // Ejecuta la eliminación tras confirmar en el modal
+  const confirmDelete = async () => {
+    if (!activityToDelete) return;
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from('actividades')
+        .update({ 
+           fecha_eliminacion: new Date().toISOString(),
+           actualizado_por_usuario_id: authData.user?.id
+        })
+        .eq('id', activityToDelete);
+        
+      if (error) throw error;
+      toast.success('Actividad eliminada con éxito');
+      if (editingId === activityToDelete) resetForm();
+      fetchData();
+    } catch (error: any) {
+      toast.error('Error al eliminar: ' + error.message);
+    } finally {
+      setActivityToDelete(null);
+    }
+  };
+
+  const resetForm = () => {
+    setEditingId(null);
+    setFormData({
+      nombre: '', descripcion: '', tipo_accion_id: 0,
+      fecha_evento: '', hora_inicio: '', hora_fin: '',
+      municipio_id: 0, lugar: '', calle: '', colonia: '', direccion: '', estado: 'Programada'
+    });
+    setOdsSeleccionados([]);
+    setShowForm(false); 
+  };
+
+  // Verifica si el form tiene datos y decide si abre el modal o cierra directo
+  const handleCancelClick = () => {
+    const formTieneDatos = 
+      formData.nombre.trim() !== '' ||
+      formData.descripcion.trim() !== '' ||
+      formData.tipo_accion_id !== 0 ||
+      formData.fecha_evento !== '' ||
+      formData.hora_inicio !== '' ||
+      formData.hora_fin !== '' ||
+      formData.municipio_id !== 0 ||
+      formData.lugar.trim() !== '' ||
+      formData.calle.trim() !== '' ||
+      formData.colonia.trim() !== '' ||
+      formData.direccion.trim() !== '' ||
+      odsSeleccionados.length > 0;
+
+    if (!formTieneDatos) {
+      resetForm();
+    } else {
+      setShowCancelDialog(true);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const estadoGuardar = submitter?.value ? submitter.value : formData.estado;
+    
+    if (formData.municipio_id === 0) return toast.warning("Selecciona un municipio.");
+    if (formData.tipo_accion_id === 0) return toast.warning("Selecciona el Tipo de Acción Principal.");
+    if (odsSeleccionados.length === 0) return toast.warning("Debes alinear la actividad con al menos un ODS.");
+    if (!formData.calle.trim() || !formData.colonia.trim()) return toast.warning("La calle y colonia son obligatorias.");
+
+    setIsSaving(true);
+    const toastId = toast.loading(editingId ? 'Actualizando actividad...' : 'Guardando actividad...');
+
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData.user?.id;
+
+      const payloadActividad = {
+        nombre: formData.nombre.trim(),
+        descripcion: formData.descripcion.trim(),
+        fecha_evento: formData.fecha_evento,
+        hora_inicio: formData.hora_inicio,
+        hora_fin: formData.hora_fin,
+        municipio_id: formData.municipio_id,
+        lugar: formData.lugar.trim(),
+        calle: formData.calle.trim(),
+        colonia: formData.colonia.trim(),
+        direccion: formData.direccion.trim(),
+        estado: estadoGuardar, 
+        actualizado_por_usuario_id: userId 
+      };
+
+      let actividadId = editingId;
+
+      if (editingId) {
+        const { error: errAct } = await supabase.from('actividades').update(payloadActividad).eq('id', editingId);
+        if (errAct) throw new Error("Error al actualizar: " + errAct.message);
+
+        await supabase.from('actividad_ods').delete().eq('actividad_id', editingId);
+        await supabase.from('actividad_acciones').delete().eq('actividad_id', editingId);
+      } else {
+        const { data: nuevaActividad, error: errAct } = await supabase
+          .from('actividades')
+          .insert([{ ...payloadActividad, creado_por_usuario_id: userId }])
+          .select('id')
+          .single();
+
+        if (errAct || !nuevaActividad) throw new Error("Error al crear: " + errAct?.message);
+        actividadId = nuevaActividad.id;
+      }
+
+      const insertOdsData = odsSeleccionados.map((ods_id, idx) => ({
+        actividad_id: actividadId,
+        ods_id: ods_id,
+        es_principal: idx === 0 
+      }));
+      const { error: errOds } = await supabase.from('actividad_ods').insert(insertOdsData);
+      if (errOds) throw new Error("Error ODS: " + errOds.message);
+
+      const { error: errAccion } = await supabase.from('actividad_acciones').insert([{ 
+        actividad_id: actividadId, tipo_accion_id: formData.tipo_accion_id, cantidad: 1 
+      }]);
+      if (errAccion) throw new Error("Error Tipo Acción: " + errAccion.message);
+
+      resetForm();
+      fetchData();
+      
+      const mensaje = estadoGuardar === 'Borrador' ? 'guardada como borrador' : 'publicada';
+      toast.success(`¡Actividad ${mensaje} exitosamente!`, { id: toastId });
+
+    } catch (error: any) {
+      toast.error(error.message, { id: toastId });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const todayStr = getTodayStr();
+  const actividadesFiltradas = actividades.filter(a => {
+    if (filterEstado !== 'Todos' && a.estado !== filterEstado) return false;
+    if (filterFecha === 'Vigentes' && a.fecha_evento < todayStr) return false;
+    if (filterFecha === 'Pasados' && a.fecha_evento >= todayStr) return false;
+    return true;
+  });
+
   return (
-    <div className="max-w-4xl mx-auto pb-12 animate-in fade-in duration-500">
-      <div className="bg-white rounded-2xl shadow-md border-t-4 border-[#00689D] p-6 md:p-8">
-        <div className="mb-8 border-b border-gray-100 pb-4">
-          <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 flex items-center gap-3">
-            <FileText className="text-[#00689D]" size={32} /> {editId ? 'Editar Actividad' : 'Alta de Actividad'}
-          </h2>
-          <p className="text-gray-500 mt-2">
-            {isPublicada ? 'Actualiza los datos de tu actividad publicada.' : 'Guárdala como borrador para continuar luego, o completa todos los campos para publicarla.'}
-          </p>
-        </div>
+    <div className="max-w-6xl mx-auto pb-12 animate-in fade-in duration-500 relative">
+      
+      {/* ================= MODALES DE SHADCN ================= */}
 
-        <form className="space-y-8" onSubmit={(e) => e.preventDefault()}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-gray-50/50 p-6 rounded-xl border border-gray-200">
-            <h3 className="md:col-span-2 text-lg font-bold text-[#00689D] flex items-center gap-2"><Target size={18}/> Datos Generales</h3>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-bold text-gray-700 mb-1">Nombre de la Actividad <span className="text-red-500">*</span></label>
-              <input type="text" className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.nombre} onChange={e => setFormData({ ...formData, nombre: e.target.value })} placeholder="Ej. Taller de Reforestación Juvenil" />
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-bold text-gray-700 mb-1">Tipo de Acción Principal {!isPublicada && <span className="text-xs font-normal text-gray-400">(Requerido al publicar)</span>}</label>
-              <select className="w-full p-3 border border-gray-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.tipo_accion} onChange={e => setFormData({ ...formData, tipo_accion: e.target.value })}>
-                <option value="">-- Selecciona --</option>
-                {tiposAccion.map(tipo => <option key={tipo.id} value={tipo.nombre}>{tipo.nombre}</option>)}
-              </select>
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-bold text-gray-700 mb-1">Descripción {!isPublicada && <span className="text-xs font-normal text-gray-400">(Requerido al publicar)</span>}</label>
-              <textarea rows={3} className="w-full p-3 border border-gray-300 rounded-lg resize-none outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.descripcion} onChange={e => setFormData({ ...formData, descripcion: e.target.value })} placeholder="Explica el objetivo, dinámicas o requerimientos..." />
-            </div>
-          </div>
+      {/* Modal para Cancelar Edición */}
+      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás seguro de cancelar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se perderá todo el progreso y los datos que no hayas guardado. Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Seguir editando</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => {
+                resetForm();
+                setShowCancelDialog(false);
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Sí, descartar cambios
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-          <div className="bg-blue-50/30 p-6 rounded-xl border border-blue-100">
-            <h3 className="font-bold text-[#00689D] mb-1 flex items-center gap-2"><Globe size={18}/> Alineación Agenda 2030 (Máx. 4)</h3>
-            <p className="text-xs text-gray-500 mb-4">Selecciona al menos 1 ODS antes de publicar.</p>
-            <div className="flex flex-wrap gap-2">
-              {odsList.map(ods => {
-                const isSelected = formData.ods_seleccionados.includes(ods.id);
-                return (
-                  <button key={ods.id} type="button" onClick={() => toggleOds(ods.id)} className={`px-3 py-2 rounded-lg border text-sm font-semibold flex items-center gap-2 transition-all ${isSelected ? 'bg-[#00689D] text-white border-[#00689D]' : 'bg-white text-gray-600 hover:border-[#00689D]'}`}>
-                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${isSelected ? 'bg-white text-[#00689D]' : 'bg-gray-100'}`}>{ods.numero}</span>
-                    {ods.nombre}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+      {/* Modal para Eliminar Actividad */}
+      <AlertDialog open={activityToDelete !== null} onOpenChange={(isOpen) => !isOpen && setActivityToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar esta actividad?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción removerá la actividad de tu lista de registros de forma permanente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setActivityToDelete(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmDelete}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 bg-gray-50/50 p-6 rounded-xl border border-gray-200">
-            <h3 className="md:col-span-3 text-lg font-bold text-[#00689D] flex items-center gap-2"><MapPin size={18}/> Cuándo y Dónde</h3>
-            <div><label className="block text-sm font-bold text-gray-700 mb-1">Fecha {!isPublicada && <span className="text-xs font-normal text-gray-400">(Obligatorio)</span>}</label><input type="date" min={todayString} className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.fecha_evento} onChange={e => setFormData({ ...formData, fecha_evento: e.target.value })} /></div>
-            <div><label className="block text-sm font-bold text-gray-700 mb-1">Hora Inicio</label><input type="time" className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.hora_inicio} onChange={e => setFormData({ ...formData, hora_inicio: e.target.value })} /></div>
-            <div><label className="block text-sm font-bold text-gray-700 mb-1">Hora Fin</label><input type="time" className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.hora_fin} onChange={e => setFormData({ ...formData, hora_fin: e.target.value })} /></div>
+      {/* ================= CONTENIDO PRINCIPAL ================= */}
+
+      {!showForm ? (
+        // === VISTA DE LISTA ===
+        <>
+          <div className="bg-white rounded-2xl shadow-md border-t-4 border-[#00689D] p-6 md:p-8 mb-8 flex flex-col sm:flex-row items-center justify-between gap-6">
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-1">Municipio</label>
-              <select className="w-full p-3 border border-gray-300 rounded-lg outline-none bg-white focus:ring-2 focus:ring-[#00689D]" value={formData.municipio_id} onChange={e => setFormData({ ...formData, municipio_id: Number(e.target.value) })}>
-                {municipios.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+              <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 flex items-center gap-3">
+                <FileText className="text-[#00689D]" size={32} /> 
+                Mis Actividades
+              </h2>
+              <p className="text-gray-500 mt-2">
+                Gestiona las actividades que coordinas en tu municipio. Añade nuevas o edita las existentes.
+              </p>
+            </div>
+            <button 
+              type="button"
+              onClick={() => {
+                resetForm(); 
+                setShowForm(true);
+              }}
+              className="w-full sm:w-auto px-6 py-3 font-bold text-white bg-[#00689D] rounded-xl hover:bg-[#00527A] shadow-md transition-all flex items-center justify-center gap-2"
+            >
+              <Plus size={20} /> Añadir Actividad
+            </button>
+          </div>
+
+          <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 mb-6 flex flex-col sm:flex-row gap-4 items-end">
+            <div className="flex-1 w-full">
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1">
+                <Filter size={14}/> Estado
+              </label>
+              <select 
+                className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D] bg-white"
+                value={filterEstado}
+                onChange={(e) => setFilterEstado(e.target.value)}
+              >
+                <option value="Todos">Todos</option>
+                <option value="Programada">Publicados</option>
+                <option value="Borrador">Borradores</option>
               </select>
             </div>
-            <div className="md:col-span-2"><label className="block text-sm font-bold text-gray-700 mb-1">Lugar Exacto</label><input type="text" className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.lugar} onChange={e => setFormData({ ...formData, lugar: e.target.value })} placeholder="Ej. Kiosco Central de la Plazuela" /></div>
+            <div className="flex-1 w-full">
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1">
+                <Filter size={14}/> Fechas
+              </label>
+              <select 
+                className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D] bg-white"
+                value={filterFecha}
+                onChange={(e) => setFilterFecha(e.target.value)}
+              >
+                <option value="Todos">Todas las fechas</option>
+                <option value="Vigentes">Vigentes (Próximas y hoy)</option>
+                <option value="Pasados">Pasadas</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden">
+            <div className="bg-gray-50/50 p-6 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <List className="text-[#00689D]" size={24} /> Registros 
+              </h3>
+              <span className="bg-blue-100 text-[#00689D] text-xs font-bold px-3 py-1 rounded-full">
+                {actividadesFiltradas.length} {actividadesFiltradas.length === 1 ? 'resultado' : 'resultados'}
+              </span>
+            </div>
             
-            <div className="md:col-span-3 pt-2">
-              <label className="block text-sm font-bold text-gray-700 mb-1">Dirección Detallada <span className="text-xs font-normal text-gray-400">(Opcional)</span></label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <input type="text" className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.calle} onChange={e => setFormData({ ...formData, calle: e.target.value })} placeholder="Calle y número" />
-                <input type="text" className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.colonia} onChange={e => setFormData({ ...formData, colonia: e.target.value })} placeholder="Colonia o Sector" />
-                <input type="text" className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.direccion} onChange={e => setFormData({ ...formData, direccion: e.target.value })} placeholder="Referencias (Ej. Entre Morelos y Zaragoza)" />
+            <div className="overflow-x-auto">
+              {loading ? (
+                <div className="p-8 text-center text-gray-500 animate-pulse">Cargando actividades...</div>
+              ) : actividadesFiltradas.length === 0 ? (
+                <div className="p-12 text-center flex flex-col items-center justify-center">
+                  <Archive className="text-gray-300 mb-3" size={48} />
+                  <p className="text-gray-500 font-medium text-lg">No se encontraron actividades</p>
+                  <p className="text-gray-400 text-sm">Prueba ajustando los filtros o añade una nueva.</p>
+                </div>
+              ) : (
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-gray-600 border-b border-gray-200">
+                      <th className="p-4 font-bold">Actividad</th>
+                      <th className="p-4 font-bold">Estado</th>
+                      <th className="p-4 font-bold">Fecha</th>
+                      <th className="p-4 font-bold">Lugar Exacto</th>
+                      <th className="p-4 font-bold">Municipio</th>
+                      <th className="p-4 font-bold text-center">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {actividadesFiltradas.map((a) => (
+                      <tr key={a.id} className="hover:bg-blue-50/50 transition-colors">
+                        <td className="p-4 font-medium text-gray-900">{a.nombre}</td>
+                        <td className="p-4">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                            a.estado === 'Borrador' 
+                              ? 'bg-yellow-50 text-yellow-700 border-yellow-200' 
+                              : 'bg-green-50 text-green-700 border-green-200'
+                          }`}>
+                            {a.estado === 'Borrador' ? 'Borrador' : 'Publicada'}
+                          </span>
+                        </td>
+                        <td className="p-4 text-gray-600">{formatearFecha(a.fecha_evento)}</td>
+                        <td className="p-4 text-gray-600">{a.lugar}</td>
+                        <td className="p-4">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">
+                            {a.municipios?.nombre || 'Sin asignar'}
+                          </span>
+                        </td>
+                        <td className="p-4 flex gap-2 justify-center">
+                          <button 
+                            type="button"
+                            onClick={() => handleEdit(a.id)}
+                            className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                            title="Editar"
+                          >
+                            <Edit size={18} />
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => handleDeleteClick(a.id)}
+                            className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                            title="Eliminar"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </>
+      ) : (
+        // === VISTA DE FORMULARIO ===
+        <div className="bg-white rounded-2xl shadow-md border-t-4 border-[#00689D] p-6 md:p-8 mb-8 animate-in slide-in-from-bottom-4 duration-500">
+          <div className="mb-8 border-b border-gray-100 pb-4 flex justify-between items-start">
+            <div>
+              <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 flex items-center gap-3">
+                <FileText className="text-[#00689D]" size={32} /> 
+                {editingId ? 'Editar Actividad' : 'Nueva Actividad'}
+              </h2>
+              <p className="text-gray-500 mt-2">
+                Completa la información para registrar esta actividad en tu municipio.
+              </p>
+            </div>
+            <button 
+              type="button"
+              onClick={handleCancelClick}
+              className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
+              title="Cerrar"
+            >
+              <X size={24} />
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-8">
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-gray-50/50 p-6 rounded-xl border border-gray-200">
+              <h3 className="md:col-span-2 text-lg font-bold text-[#00689D] flex items-center gap-2">
+                <Target size={18}/> Datos Generales
+              </h3>
+              
+              <div className="md:col-span-2">
+                <label className="block text-sm font-bold text-gray-700 mb-1">Nombre de la Actividad <span className="text-red-500">*</span></label>
+                <input type="text" required className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.nombre} onChange={(e) => setFormData({...formData, nombre: e.target.value})} placeholder="Ej. Taller de Reforestación Juvenil" />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-bold text-gray-700 mb-1">Tipo de Acción Principal <span className="text-red-500">*</span></label>
+                <select required className="w-full p-3 border border-gray-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.tipo_accion_id} onChange={(e) => setFormData({...formData, tipo_accion_id: Number(e.target.value)})}>
+                  <option value="0">-- Selecciona la Acción --</option>
+                  {tiposAccion.map(tipo => <option key={tipo.id} value={tipo.id}>{tipo.nombre}</option>)}
+                </select>
+              </div>
+              
+              <div className="md:col-span-2">
+                <label className="block text-sm font-bold text-gray-700 mb-1">Descripción de la Dinámica <span className="text-red-500">*</span></label>
+                <textarea required rows={3} className="w-full p-3 border border-gray-300 rounded-lg resize-none outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.descripcion} onChange={(e) => setFormData({...formData, descripcion: e.target.value})} placeholder="Explica el objetivo, dinámicas o requerimientos..."></textarea>
               </div>
             </div>
-          </div>
 
-          <div className="flex flex-col sm:flex-row justify-end items-center gap-3 pt-6 border-t border-gray-100">
-            <button type="button" onClick={() => navigate('/embajador/calendario')} className="w-full sm:w-auto px-6 py-3 font-bold text-gray-600 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
-              <X size={18} className="inline mr-1" /> {isPublicada ? 'Descartar Cambios' : 'Cancelar'}
-            </button>
-            
-            {isPublicada ? (
-              <>
-                {actToEdit.estado !== 'Cancelada' && (
-                  <button type="button" disabled={isSaving} onClick={() => handleGuardarActividad('Cancelada')} className="w-full sm:w-auto px-6 py-3 font-bold text-red-700 bg-red-50 border border-red-200 rounded-xl hover:bg-red-100 transition-colors">
-                    <Ban size={18} className="inline mr-1" /> Cancelar Evento
-                  </button>
-                )}
-                <button type="button" disabled={isSaving} onClick={() => handleGuardarActividad(actToEdit.estado === 'Cancelada' ? 'Programada' : actToEdit.estado)} className="w-full sm:w-auto px-8 py-3 font-bold text-white bg-[#00689D] rounded-xl hover:bg-[#00527A] shadow-md transition-all disabled:opacity-50">
-                  <Save size={18} className="inline mr-1" /> Guardar Cambios
+            <div className="bg-blue-50/30 p-6 rounded-xl border border-blue-100">
+              <h3 className="font-bold text-[#00689D] mb-1 flex items-center gap-2">
+                <Globe size={18}/> Alineación Agenda 2030 (ODS) <span className="text-red-500">*</span>
+              </h3>
+              <p className="text-xs text-gray-500 mb-4">Selecciona los ODS impactados. El primero que selecciones se registrará como el principal.</p>
+              <div className="flex flex-wrap gap-2">
+                {listaOds.map(ods => {
+                  const isSelected = odsSeleccionados.includes(ods.id);
+                  return (
+                    <button key={ods.id} type="button" onClick={() => toggleOds(ods.id)} className={`px-3 py-2 rounded-lg border text-sm font-semibold flex items-center gap-2 transition-all ${isSelected ? 'bg-[#00689D] text-white border-[#00689D]' : 'bg-white text-gray-600 hover:border-[#00689D]'}`}>
+                      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${isSelected ? 'bg-white text-[#00689D]' : 'bg-gray-100'}`}>{ods.numero}</span>
+                      {ods.nombre}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 bg-gray-50/50 p-6 rounded-xl border border-gray-200">
+              <h3 className="md:col-span-3 text-lg font-bold text-[#00689D] flex items-center gap-2">
+                <MapPin size={18}/> Cuándo y Dónde
+              </h3>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Fecha <span className="text-red-500">*</span></label>
+                <input type="date" required className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.fecha_evento} onChange={(e) => setFormData({...formData, fecha_evento: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Hora Inicio <span className="text-red-500">*</span></label>
+                <input type="time" required className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.hora_inicio} onChange={(e) => setFormData({...formData, hora_inicio: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Hora Fin <span className="text-red-500">*</span></label>
+                <input type="time" required className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.hora_fin} onChange={(e) => setFormData({...formData, hora_fin: e.target.value})} />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Municipio <span className="text-red-500">*</span></label>
+                <select required className="w-full p-3 border border-gray-300 rounded-lg outline-none bg-white focus:ring-2 focus:ring-[#00689D]" value={formData.municipio_id} onChange={(e) => setFormData({...formData, municipio_id: Number(e.target.value)})}>
+                  <option value="0">-- Selecciona --</option>
+                  {municipios.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-bold text-gray-700 mb-1">Lugar Exacto (Edificio / Espacio) <span className="text-red-500">*</span></label>
+                <input type="text" required className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.lugar} onChange={(e) => setFormData({...formData, lugar: e.target.value})} placeholder="Ej. Kiosco Central de la Plazuela" />
+              </div>
+
+              <div className="md:col-span-3 pt-2">
+                <label className="block text-sm font-bold text-gray-700 mb-1">Dirección Detallada <span className="text-red-500">*</span></label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <input type="text" required className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.calle} onChange={(e) => setFormData({...formData, calle: e.target.value})} placeholder="Calle y número" />
+                  <input type="text" required className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.colonia} onChange={(e) => setFormData({...formData, colonia: e.target.value})} placeholder="Colonia o Sector" />
+                  <input type="text" className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D]" value={formData.direccion} onChange={(e) => setFormData({...formData, direccion: e.target.value})} placeholder="Referencias (Ej. Frente a la iglesia)" />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row justify-end gap-3 pt-6 border-t border-gray-100">
+              <button 
+                type="button" 
+                onClick={handleCancelClick}
+                disabled={isSaving}
+                className="w-full sm:w-auto px-6 py-3 font-bold text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 border border-gray-200 shadow-sm transition-all disabled:opacity-50"
+              >
+                <X size={18} className="inline mr-1" /> Cancelar
+              </button>
+
+              {(!editingId || formData.estado === 'Borrador') && (
+                <button 
+                  type="submit" 
+                  name="accionBoton" 
+                  value="Borrador" 
+                  disabled={isSaving} 
+                  className="w-full sm:w-auto px-6 py-3 font-bold text-[#00689D] bg-blue-50 border border-[#00689D] rounded-xl hover:bg-blue-100 shadow-sm transition-all disabled:opacity-50"
+                >
+                  <Archive size={18} className="inline mr-1" /> Guardar Borrador
                 </button>
-              </>
-            ) : (
-              <>
-                <button type="button" disabled={isSaving} onClick={() => handleGuardarActividad('Borrador')} className="w-full sm:w-auto px-6 py-3 font-bold text-gray-700 bg-gray-100 border border-gray-200 rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-50">
-                  <Save size={18} className="inline mr-1 text-gray-500" /> Guardar Borrador
-                </button>
-                <button type="button" disabled={isSaving} onClick={() => handleGuardarActividad('Programada')} className="w-full sm:w-auto px-8 py-3 font-bold text-white bg-[#00689D] rounded-xl hover:bg-[#00527A] shadow-md transition-all disabled:opacity-50">
-                  <Send size={18} className="inline mr-1" /> Publicar en Calendario
-                </button>
-              </>
-            )}
-          </div>
-        </form>
-      </div>
+              )}
+
+              <button 
+                type="submit"
+                name="accionBoton" 
+                value="Programada" 
+                disabled={isSaving} 
+                className="w-full sm:w-auto px-8 py-3 font-bold text-white bg-[#00689D] rounded-xl hover:bg-[#00527A] shadow-md transition-all disabled:opacity-50"
+              >
+                <Save size={18} className="inline mr-1" /> 
+                {editingId ? (formData.estado === 'Borrador' ? 'Publicar Borrador' : 'Actualizar Actividad') : 'Publicar Actividad'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      
     </div>
   );
 }
