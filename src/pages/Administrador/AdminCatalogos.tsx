@@ -5,8 +5,9 @@ import {
   MapPin, Users, Target, Folder, ShieldCheck, 
   UploadCloud, Edit2, Trash2, PlusCircle, Save, 
   X, Loader2, Image as ImageIcon, Activity, UserPlus,
-  Settings, Plus
+  Settings, Plus, AlertCircle
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import CatalogoPrograma from '../Administrador/CatalogoPrograma'; 
 
@@ -22,6 +23,29 @@ const TABS: { id: TabType; label: string; icon: any }[] = [
   { id: 'permisos', label: 'Permisos', icon: ShieldCheck },
   { id: 'sistemas', label: 'Programa', icon: Settings },
 ];
+
+// Función auxiliar para emitir notificaciones con Sonner y sonido
+const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+  const audio = new Audio('/notification.mp3');
+  audio.volume = 0.5;
+  audio.play().catch(err => console.log('Audio bloqueado por el navegador:', err));
+
+  const options = { position: 'bottom-right' as const };
+
+  switch (type) {
+    case 'success':
+      toast.success(message, options);
+      break;
+    case 'error':
+      toast.error(message, options);
+      break;
+    case 'warning':
+      toast.warning(message, options);
+      break;
+    default:
+      toast.info(message, options);
+  }
+};
 
 export default function AdminCatalogos() {
   const { catalogo } = useParams<{ catalogo: string }>();
@@ -48,6 +72,23 @@ export default function AdminCatalogos() {
   const [mostrarFormPermiso, setMostrarFormPermiso] = useState(false);
   const [permisoEditId, setPermisoEditId] = useState<number | null>(null);
   const [permisoForm, setPermisoForm] = useState({ nombre: '', descripcion: '' });
+
+  // Estados del Dialogo de Confirmación (Eliminar)
+  const [dialogoConfirmacion, setDialogoConfirmacion] = useState<{
+    isOpen: boolean;
+    idAEliminar: number | null;
+  }>({ isOpen: false, idAEliminar: null });
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
+
+  // Prevenir scroll cuando el modal está abierto
+  useEffect(() => {
+    if (dialogoConfirmacion.isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+    }
+    return () => { document.body.style.overflow = 'auto'; };
+  }, [dialogoConfirmacion.isOpen]);
 
   // ==========================================
   // CARGA DE DATOS
@@ -110,7 +151,7 @@ export default function AdminCatalogos() {
         setRolPermisosActivos(prev => [...prev, { rol_id: rolId, permiso_id: permisoId }]);
       }
     } catch (error) {
-      alert("Error al actualizar el permiso.");
+      notifyWithSound("Error al actualizar el permiso en la base de datos.", "error");
     }
   };
 
@@ -120,16 +161,18 @@ export default function AdminCatalogos() {
       if (permisoEditId) {
         const { error } = await supabase.from('permisos').update(permisoForm).eq('id', permisoEditId);
         if (error) throw error;
+        notifyWithSound("Permiso actualizado con éxito.", "success");
       } else {
         const { error } = await supabase.from('permisos').insert([{ ...permisoForm, activo: true }]);
         if (error) throw error;
+        notifyWithSound("Nuevo permiso registrado con éxito.", "success");
       }
       setPermisoForm({ nombre: '', descripcion: '' });
       setPermisoEditId(null);
       setMostrarFormPermiso(false);
       fetchData();
     } catch (error: any) {
-      alert("Error al guardar el permiso: " + error.message);
+      notifyWithSound("Error al guardar el permiso: " + error.message, "error");
     }
   };
 
@@ -166,7 +209,7 @@ export default function AdminCatalogos() {
       
       const { error: uploadError } = await supabase.storage.from('imagenes').upload(fileName, imageFile);
       if (uploadError) {
-        alert("Error al subir la imagen: " + uploadError.message);
+        notifyWithSound("Error al subir la imagen: " + uploadError.message, "error");
         setUploadingImage(false);
         return;
       }
@@ -193,24 +236,47 @@ export default function AdminCatalogos() {
 
     const tableName = activeTab === 'proyectos' ? 'proyectos_sociales' : activeTab;
 
-    if (editId) {
-      await supabase.from(tableName).update(payload).eq('id', editId);
-    } else {
-      await supabase.from(tableName).insert([payload]);
+    try {
+      if (editId) {
+        const { error } = await supabase.from(tableName).update(payload).eq('id', editId);
+        if (error) throw error;
+        notifyWithSound("Registro actualizado correctamente.", "success");
+      } else {
+        const { error } = await supabase.from(tableName).insert([payload]);
+        if (error) throw error;
+        notifyWithSound("Nuevo registro guardado con éxito.", "success");
+      }
+      resetForm();
+      fetchData();
+    } catch (error: any) {
+      notifyWithSound("Error al guardar el registro: " + error.message, "error");
     }
-
-    resetForm();
-    fetchData();
   };
 
-  const handleDelete = async (id: number) => {
-    if (!window.confirm(`¿Estás seguro de que deseas eliminar este registro?`)) return;
-    const tableName = activeTab === 'proyectos' ? 'proyectos_sociales' : (activeTab === 'permisos' ? 'permisos' : activeTab);
-    const { error } = await supabase.from(tableName).delete().eq('id', id);
+  const triggerDelete = (id: number) => {
+    setDialogoConfirmacion({ isOpen: true, idAEliminar: id });
+  };
+
+  const ejecutarEliminar = async () => {
+    if (!dialogoConfirmacion.idAEliminar) return;
+    setIsProcessingAction(true);
     
-    if (error) {
-      alert("Error al eliminar. Sugerencia: Mejor presiona 'Editar' y desmarca la casilla de 'Activo'.");
-    } else fetchData();
+    try {
+      const tableName = activeTab === 'proyectos' ? 'proyectos_sociales' : (activeTab === 'permisos' ? 'permisos' : activeTab);
+      const { error } = await supabase.from(tableName as string).delete().eq('id', dialogoConfirmacion.idAEliminar);
+      
+      if (error) {
+        notifyWithSound("Error al eliminar. Puede que el registro esté en uso. Sugerencia: Presiona 'Editar' y desmarca la casilla 'Activo'.", "error");
+      } else {
+        notifyWithSound("Registro eliminado permanentemente.", "success");
+        fetchData();
+      }
+    } catch (err) {
+      notifyWithSound("Ocurrió un error inesperado.", "error");
+    } finally {
+      setIsProcessingAction(false);
+      setDialogoConfirmacion({ isOpen: false, idAEliminar: null });
+    }
   };
 
   const handleEdit = (item: any) => {
@@ -394,7 +460,7 @@ export default function AdminCatalogos() {
                                 <button onClick={() => handleEditPermiso(item)} className="text-[#00689D] hover:bg-blue-50 p-1.5 rounded-md transition-colors" title="Editar">
                                   <Edit2 size={16} />
                                 </button>
-                                <button onClick={() => handleDelete(item.id)} className="text-red-500 hover:bg-red-50 p-1.5 rounded-md transition-colors" title="Eliminar">
+                                <button onClick={() => triggerDelete(item.id)} className="text-red-500 hover:bg-red-50 p-1.5 rounded-md transition-colors" title="Eliminar">
                                   <Trash2 size={16} />
                                 </button>
                               </div>
@@ -591,7 +657,7 @@ export default function AdminCatalogos() {
                                 <button onClick={() => handleEdit(item)} className="text-[#00689D] hover:bg-blue-50 p-1.5 rounded-md transition-colors" title="Editar">
                                   <Edit2 size={18} />
                                 </button>
-                                <button onClick={() => handleDelete(item.id)} className="text-red-500 hover:bg-red-50 p-1.5 rounded-md transition-colors" title="Eliminar">
+                                <button onClick={() => triggerDelete(item.id)} className="text-red-500 hover:bg-red-50 p-1.5 rounded-md transition-colors" title="Eliminar">
                                   <Trash2 size={18} />
                                 </button>
                               </div>
@@ -617,6 +683,46 @@ export default function AdminCatalogos() {
           )}
         </div>
       </div>
+
+      {/* ==========================================
+          ALERT DIALOG MODAL (Sustituye window.confirm)
+      ========================================== */}
+      {dialogoConfirmacion.isOpen && (
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-200">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-14 h-14 rounded-full bg-red-100 text-red-600 flex items-center justify-center mb-4">
+                <AlertCircle size={32} />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Eliminar Registro</h3>
+              <p className="text-sm text-gray-600 mb-6">
+                ¿Estás seguro de que deseas eliminar permanentemente este registro? Esta acción no se puede deshacer.
+              </p>
+              
+              <div className="flex items-center justify-center gap-3 w-full">
+                <button 
+                  type="button"
+                  onClick={() => !isProcessingAction && setDialogoConfirmacion({ isOpen: false, idAEliminar: null })}
+                  disabled={isProcessingAction}
+                  className="flex-1 px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="button"
+                  onClick={ejecutarEliminar}
+                  disabled={isProcessingAction}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 rounded-xl text-sm font-bold text-white hover:bg-red-700 transition-colors disabled:opacity-70"
+                >
+                  {isProcessingAction ? <Loader2 size={16} className="animate-spin" /> : null}
+                  Sí, eliminar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

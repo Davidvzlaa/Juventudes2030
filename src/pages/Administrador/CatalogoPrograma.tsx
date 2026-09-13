@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../../lib/supabase";
 import { 
   Save, Plus, Trash2, Globe, Mail, Phone, MapPin, 
-  Clock, Loader2, Link as LinkIcon, UploadCloud, Edit2, X, Check
+  Clock, Loader2, Link as LinkIcon, UploadCloud, Edit2, X, Check, AlertCircle
 } from "lucide-react";
+import { toast } from "sonner";
 
 // ==========================================
 // INTERFACES (Adaptadas para JSONB)
@@ -47,6 +48,29 @@ const TIPOS_LOGO = [
   { id: 'isotipo', nombre: 'Isotipo (Ícono)', desc: 'Favicon o avatares' }
 ];
 
+// Función auxiliar para emitir la notificación con sonido
+const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+  const audio = new Audio('/notification.mp3');
+  audio.volume = 0.5;
+  audio.play().catch(err => console.log('Audio bloqueado por el navegador:', err));
+
+  const options = { position: 'bottom-right' as const };
+
+  switch (type) {
+    case 'success':
+      toast.success(message, options);
+      break;
+    case 'error':
+      toast.error(message, options);
+      break;
+    case 'warning':
+      toast.warning(message, options);
+      break;
+    default:
+      toast.info(message, options);
+  }
+};
+
 export default function CatalogoPrograma() {
   // ==========================================
   // ESTADOS DEL SISTEMA
@@ -59,13 +83,11 @@ export default function CatalogoPrograma() {
   
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
-  const [mensaje, setMensaje] = useState({ texto: "", tipo: "" });
 
   // ==========================================
   // ESTADOS DE LOGOTIPOS (Múltiples)
   // ==========================================
   const [archivosLogo, setArchivosLogo] = useState<Record<string, File>>({});
-  // CORRECCIÓN TYPESCRIPT APLICADA AQUÍ:
   const [previewsLogo, setPreviewsLogo] = useState<Logotipos>({}); 
   
   const fileInputRefs = {
@@ -85,6 +107,15 @@ export default function CatalogoPrograma() {
   const [redes, setRedes] = useState<RedSocial[]>([]);
   const [nuevaRed, setNuevaRed] = useState({ nombre: "Facebook", url: "" });
   const [editandoRedId, setEditandoRedId] = useState<number | null>(null);
+
+  // ==========================================
+  // ESTADOS DEL ALERT DIALOG (Para eliminar)
+  // ==========================================
+  const [dialogoConfirmacion, setDialogoConfirmacion] = useState<{
+    isOpen: boolean;
+    idRed: number | null;
+  }>({ isOpen: false, idRed: null });
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
 
   // ==========================================
   // CARGA INICIAL
@@ -124,7 +155,7 @@ export default function CatalogoPrograma() {
       }
     } catch (error) {
       console.error("Error al cargar datos:", error);
-      mostrarMensaje("Error al cargar la información", "error");
+      notifyWithSound("Error al cargar la información", "error");
     } finally {
       setCargando(false);
     }
@@ -152,7 +183,7 @@ export default function CatalogoPrograma() {
   // ==========================================
   const agregarHorario = () => {
     if (!nuevoHorario.horas) {
-      mostrarMensaje("Debes especificar las horas (Ej. 09:00 - 17:00)", "error");
+      notifyWithSound("Debes especificar las horas (Ej. 09:00 - 17:00)", "warning");
       return;
     }
     setSistema(prev => ({ ...prev, horarios: [...prev.horarios, nuevoHorario] }));
@@ -162,54 +193,43 @@ export default function CatalogoPrograma() {
   const eliminarHorario = (index: number) => {
     setSistema(prev => ({ ...prev, horarios: prev.horarios.filter((_, i) => i !== index) }));
   };
-// ==========================================
-  // GUARDAR SISTEMA (Información General + Limpieza de Storage)
+
+  // ==========================================
+  // GUARDAR SISTEMA (Información General)
   // ==========================================
   const guardarSistema = async (e: React.FormEvent) => {
     e.preventDefault();
     setGuardando(true);
-    setMensaje({ texto: "", tipo: "" });
 
     try {
       let logotiposFinales = { ...sistema.logotipos };
       
-      // 1. PROCESAR SUBIDA DE IMÁGENES Y BORRADO DE LAS VIEJAS
       const uploadPromises = Object.entries(archivosLogo).map(async ([tipoId, file]) => {
-        
-        // A) Verificar si ya existía un logo viejo en este espacio
         const urlVieja = sistema.logotipos[tipoId];
         
         if (urlVieja) {
-          // Extraer solo el nombre del archivo de la URL pública de Supabase
-          // Ej: https://.../storage/v1/object/public/imagenes/logo_principal_123.png -> logo_principal_123.png
           const urlParts = urlVieja.split('/');
           const oldFileName = urlParts[urlParts.length - 1];
 
-          // Mandar a borrar el archivo viejo del bucket de 'imagenes'
           if (oldFileName) {
-            // Usamos .catch para que si falla (ej. el archivo ya no existe), no detenga el guardado
             await supabase.storage.from('imagenes').remove([oldFileName]).catch(err => {
-              console.warn("No se pudo borrar el logo anterior o ya no existe:", err);
+              console.warn("No se pudo borrar el logo anterior:", err);
             });
           }
         }
 
-        // B) Subir el nuevo archivo
         const fileExt = file.name.split('.').pop();
         const fileName = `logo_${tipoId}_${Date.now()}.${fileExt}`;
         
         const { error: uploadError } = await supabase.storage.from('imagenes').upload(fileName, file);
         if (uploadError) throw uploadError;
 
-        // C) Obtener la nueva URL pública
         const { data: { publicUrl } } = supabase.storage.from('imagenes').getPublicUrl(fileName);
         logotiposFinales[tipoId] = publicUrl;
       });
 
-      // Esperar a que se borren los viejos y se suban los nuevos
       await Promise.all(uploadPromises);
 
-      // 2. GUARDAR EN LA BASE DE DATOS (PostgreSQL)
       const payload = {
         nombre: sistema.nombre,
         descripcion: sistema.descripcion,
@@ -230,12 +250,12 @@ export default function CatalogoPrograma() {
         if (error) throw error;
       }
       
-      mostrarMensaje("Información actualizada correctamente", "exito");
-      setArchivosLogo({}); // Limpiar pendientes
+      notifyWithSound("Información general actualizada correctamente", "success");
+      setArchivosLogo({});
       setSistema(prev => ({ ...prev, logotipos: logotiposFinales }));
     } catch (error) {
       console.error("Error al guardar:", error);
-      mostrarMensaje("Error al guardar la información", "error");
+      notifyWithSound("Error al guardar la información general", "error");
     } finally {
       setGuardando(false);
     }
@@ -245,7 +265,10 @@ export default function CatalogoPrograma() {
   // CRUD REDES SOCIALES
   // ==========================================
   const guardarRed = async () => {
-    if (!nuevaRed.url || !sistema.id) return;
+    if (!nuevaRed.url || !sistema.id) {
+      notifyWithSound("Debes introducir una URL válida", "warning");
+      return;
+    }
     
     try {
       if (editandoRedId) {
@@ -255,7 +278,7 @@ export default function CatalogoPrograma() {
           .eq("id", editandoRedId);
         
         if (error) throw error;
-        mostrarMensaje("Red social actualizada", "exito");
+        notifyWithSound("Red social actualizada con éxito", "success");
       } else {
         const { error } = await supabase
           .from("redes_sociales")
@@ -267,14 +290,14 @@ export default function CatalogoPrograma() {
           }]);
 
         if (error) throw error;
-        mostrarMensaje("Red social añadida", "exito");
+        notifyWithSound("Red social agregada con éxito", "success");
       }
 
       cancelarEdicionRed();
       cargarDatos();
     } catch (error) {
       console.error("Error al guardar red:", error);
-      mostrarMensaje("Error al procesar la red social", "error");
+      notifyWithSound("Error al procesar la red social", "error");
     }
   };
 
@@ -288,21 +311,25 @@ export default function CatalogoPrograma() {
     setNuevaRed({ nombre: "Facebook", url: "" });
   };
 
-  const eliminarRed = async (id: number) => {
-    if (!window.confirm("¿Seguro que deseas eliminar esta red?")) return;
-    try {
-      const { error } = await supabase.from("redes_sociales").delete().eq("id", id);
-      if (error) throw error;
-      setRedes(redes.filter(r => r.id !== id));
-      mostrarMensaje("Red eliminada", "exito");
-    } catch (error) {
-      console.error("Error al eliminar red:", error);
-    }
+  const triggerEliminarRed = (id: number) => {
+    setDialogoConfirmacion({ isOpen: true, idRed: id });
   };
 
-  const mostrarMensaje = (texto: string, tipo: string) => {
-    setMensaje({ texto, tipo });
-    setTimeout(() => setMensaje({ texto: "", tipo: "" }), 4000);
+  const ejecutarEliminarRed = async () => {
+    if (!dialogoConfirmacion.idRed) return;
+    setIsProcessingAction(true);
+    try {
+      const { error } = await supabase.from("redes_sociales").delete().eq("id", dialogoConfirmacion.idRed);
+      if (error) throw error;
+      setRedes(redes.filter(r => r.id !== dialogoConfirmacion.idRed));
+      notifyWithSound("Red social eliminada", "success");
+    } catch (error) {
+      console.error("Error al eliminar red:", error);
+      notifyWithSound("Error al eliminar la red social", "error");
+    } finally {
+      setIsProcessingAction(false);
+      setDialogoConfirmacion({ isOpen: false, idRed: null });
+    }
   };
 
   if (cargando && !sistema.nombre) {
@@ -319,12 +346,6 @@ export default function CatalogoPrograma() {
         <h1 className="text-2xl font-black text-[#061A2D]">Configuración del Programa</h1>
         <p className="text-gray-500 text-sm">Gestiona la información pública, variaciones de logotipo y horarios.</p>
       </div>
-
-      {mensaje.texto && (
-        <div className={`mb-6 p-4 rounded-xl text-sm font-bold ${mensaje.tipo === 'exito' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-          {mensaje.texto}
-        </div>
-      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
@@ -531,6 +552,7 @@ export default function CatalogoPrograma() {
                     </div>
                     <div className="flex items-center gap-1 shrink-0 ml-2">
                       <button 
+                        type="button"
                         onClick={() => iniciarEdicionRed(red)}
                         className="p-1.5 text-gray-400 hover:text-[#00689D] hover:bg-blue-100 rounded-lg transition-colors"
                         title="Editar red"
@@ -538,7 +560,8 @@ export default function CatalogoPrograma() {
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button 
-                        onClick={() => eliminarRed(red.id)}
+                        type="button"
+                        onClick={() => triggerEliminarRed(red.id)}
                         className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                         title="Eliminar red"
                       >
@@ -557,7 +580,7 @@ export default function CatalogoPrograma() {
                   {editandoRedId ? <><Edit2 className="w-3 h-3 text-blue-500"/> Editando Red</> : "Agregar Nueva"}
                 </h3>
                 {editandoRedId && (
-                  <button onClick={cancelarEdicionRed} className="text-gray-400 hover:text-red-500">
+                  <button type="button" onClick={cancelarEdicionRed} className="text-gray-400 hover:text-red-500">
                     <X className="w-4 h-4" />
                   </button>
                 )}
@@ -591,6 +614,7 @@ export default function CatalogoPrograma() {
                 <div className="flex gap-2 pt-2">
                   {editandoRedId && (
                     <button 
+                      type="button"
                       onClick={cancelarEdicionRed}
                       className="flex-1 bg-white border border-gray-300 text-gray-600 px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-100 transition-colors"
                     >
@@ -598,6 +622,7 @@ export default function CatalogoPrograma() {
                     </button>
                   )}
                   <button 
+                    type="button"
                     onClick={guardarRed}
                     disabled={!nuevaRed.url || !sistema.id}
                     className={`flex-1 flex justify-center items-center gap-2 text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors disabled:opacity-50 shadow-sm
@@ -612,6 +637,46 @@ export default function CatalogoPrograma() {
           </div>
         </div>
       </div>
+
+      {/* ==========================================
+          ALERT DIALOG MODAL (Sustituye window.confirm)
+      ========================================== */}
+      {dialogoConfirmacion.isOpen && (
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-200">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-14 h-14 rounded-full bg-red-100 text-red-600 flex items-center justify-center mb-4">
+                <AlertCircle size={32} />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Eliminar Red Social</h3>
+              <p className="text-sm text-gray-600 mb-6">
+                ¿Estás seguro de que deseas eliminar permanentemente esta red social? Esta acción no se puede deshacer.
+              </p>
+              
+              <div className="flex items-center justify-center gap-3 w-full">
+                <button 
+                  type="button"
+                  onClick={() => !isProcessingAction && setDialogoConfirmacion({ isOpen: false, idRed: null })}
+                  disabled={isProcessingAction}
+                  className="flex-1 px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="button"
+                  onClick={ejecutarEliminarRed}
+                  disabled={isProcessingAction}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 rounded-xl text-sm font-bold text-white hover:bg-red-700 transition-colors disabled:opacity-70"
+                >
+                  {isProcessingAction ? <Loader2 size={16} className="animate-spin" /> : null}
+                  Sí, eliminar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

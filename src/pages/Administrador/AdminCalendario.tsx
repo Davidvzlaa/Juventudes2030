@@ -8,8 +8,9 @@ import { es } from 'date-fns/locale';
 import { 
   ChevronLeft, ChevronRight, MapPin, Clock, Calendar as CalendarIcon, 
   Info, X, LayoutGrid, List, Columns, User, Users, Edit2, 
-  PlusCircle, Trash2, Ban, Filter
+  PlusCircle, Trash2, Ban, Filter, AlertCircle, Loader2
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -41,6 +42,29 @@ interface Municipio {
 
 type ViewMode = 'mes' | 'semana' | 'dia';
 
+// Función auxiliar para emitir la notificación con sonido y posición inferior derecha
+const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+  const audio = new Audio('/notification.mp3');
+  audio.volume = 0.5;
+  audio.play().catch(err => console.log('Audio bloqueado por el navegador:', err));
+
+  const options = { position: 'bottom-right' as const };
+
+  switch (type) {
+    case 'success':
+      toast.success(message, options);
+      break;
+    case 'error':
+      toast.error(message, options);
+      break;
+    case 'warning':
+      toast.warning(message, options);
+      break;
+    default:
+      toast.info(message, options);
+  }
+};
+
 export default function AdminCalendario() {
   const { usuarioDatos } = useAuth();
   const navigate = useNavigate(); 
@@ -57,6 +81,16 @@ export default function AdminCalendario() {
   const [loading, setLoading] = useState(true);
   const [eventoSeleccionado, setEventoSeleccionado] = useState<Actividad | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // ==========================================
+  // ESTADOS DEL ALERT DIALOG (Sustituto de window.confirm)
+  // ==========================================
+  const [dialogoConfirmacion, setDialogoConfirmacion] = useState<{
+    isOpen: boolean;
+    tipo: 'eliminar' | 'cancelar' | null;
+    idActividad: number | null;
+  }>({ isOpen: false, tipo: null, idActividad: null });
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
 
   // ==========================================
   // LÓGICA DE INTERFAZ
@@ -76,9 +110,9 @@ export default function AdminCalendario() {
   }, []);
 
   useEffect(() => {
-    document.body.style.overflow = isSidebarOpen ? 'hidden' : 'auto';
+    document.body.style.overflow = (isSidebarOpen || dialogoConfirmacion.isOpen) ? 'hidden' : 'auto';
     return () => { document.body.style.overflow = 'auto'; };
-  }, [isSidebarOpen]);
+  }, [isSidebarOpen, dialogoConfirmacion.isOpen]);
 
   // ==========================================
   // LÓGICA DE ESTILOS (VERSIÓN ADMIN)
@@ -166,14 +200,13 @@ export default function AdminCalendario() {
 
       // Aplicar filtro si no es "todos"
       if (filtroMunicipio !== 'todos') {
-        // Trae las del municipio específico, O las que son para "todos" (municipio_id IS NULL si es que lo manejas así en base de datos)
         query = query.or(`municipio_id.eq.${filtroMunicipio},municipio_id.is.null`);
       }
 
       const { data: acts, error } = await query;
       if (error) throw error;
       
-      // Filtrar borradores: Un admin solo ve sus propios borradores, no los de los embajadores
+      // Filtrar borradores: Un admin solo ve sus propios borradores
       const actividadesPermitidas = (acts as any[]).filter(a => a.estado !== 'Borrador' || a.creado_por_usuario_id === usuarioDatos?.id);
       
       setActividades(actividadesPermitidas || []);
@@ -188,33 +221,47 @@ export default function AdminCalendario() {
   useEffect(() => { fetchActividades(); }, [usuarioDatos, filtroMunicipio, location.key]);
 
   // ==========================================
-  // ACCIONES ADMINISTRATIVAS
+  // ACCIONES ADMINISTRATIVAS Y DIALOGOS
   // ==========================================
   const irAEditar = (actividad: Actividad) => {
     setIsSidebarOpen(false);
-    navigate('/admin/actividades/editar', { state: { actToEdit: actividad } }); // Ajusta esta ruta a la de tu admin
+    navigate('/admin/actividades/editar', { state: { actToEdit: actividad } });
   };
 
-  const handleEliminar = async (id: number) => {
-    if (!window.confirm('¿Estás seguro de que deseas eliminar permanentemente esta actividad?')) return;
+  const triggerEliminar = (id: number) => {
+    setDialogoConfirmacion({ isOpen: true, tipo: 'eliminar', idActividad: id });
+  };
+
+  const triggerCancelarEvento = (id: number) => {
+    setDialogoConfirmacion({ isOpen: true, tipo: 'cancelar', idActividad: id });
+  };
+
+  const ejecutarAccionConfirmada = async () => {
+    if (!dialogoConfirmacion.idActividad) return;
+    setIsProcessingAction(true);
     try {
-      const { error } = await supabase.from('actividades').update({ fecha_eliminacion: new Date().toISOString() }).eq('id', id);
-      if (error) throw error;
-      setIsSidebarOpen(false);
-      fetchActividades();
-    } catch (error) { alert('Error al eliminar la actividad.'); }
+      if (dialogoConfirmacion.tipo === 'eliminar') {
+        const { error } = await supabase.from('actividades').update({ fecha_eliminacion: new Date().toISOString() }).eq('id', dialogoConfirmacion.idActividad);
+        if (error) throw error;
+        setIsSidebarOpen(false);
+        notifyWithSound('Actividad eliminada permanentemente.', 'success');
+      } else if (dialogoConfirmacion.tipo === 'cancelar') {
+        const { error } = await supabase.from('actividades').update({ estado: 'Cancelada' }).eq('id', dialogoConfirmacion.idActividad);
+        if (error) throw error;
+        notifyWithSound('La actividad ha sido cancelada con éxito.', 'success');
+      }
+      await fetchActividades();
+    } catch (error) {
+      notifyWithSound(`Error al ${dialogoConfirmacion.tipo} la actividad.`, 'error');
+    } finally {
+      setIsProcessingAction(false);
+      setDialogoConfirmacion({ isOpen: false, tipo: null, idActividad: null });
+    }
   };
 
-  const handleCancelarEvento = async (id: number) => {
-    if (!window.confirm('¿Deseas marcar esta actividad como Cancelada?')) return;
-    try {
-      const { error } = await supabase.from('actividades').update({ estado: 'Cancelada' }).eq('id', id);
-      if (error) throw error;
-      await fetchActividades(); 
-    } catch (error) { alert('Error al cancelar la actividad.'); }
-  };
-
-  // ... Aquí van renderMonthView, renderWeekView y renderDayView (son idénticas a las del Embajador)
+  // ==========================================
+  // RENDERIZADO DEL GRID
+  // ==========================================
   const renderMonthView = () => {
     const monthStart = startOfMonth(currentDate); const endDate = endOfWeek(endOfMonth(monthStart), { weekStartsOn: 1 });
     const rows = []; let days = []; let day = startOfWeek(monthStart, { weekStartsOn: 1 });
@@ -341,7 +388,7 @@ export default function AdminCalendario() {
         <span className="flex items-center gap-2"><div className="w-3 h-3 rounded-full border-2 border-dashed border-amber-400 bg-amber-100"></div> Mis Borradores</span>
       </div>
 
-      {/* CONTROLES DE FECHAS (Igual) */}
+      {/* CONTROLES DE FECHAS */}
       <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-gray-100 mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-start">
           <div className="flex bg-gray-50 border border-gray-200 rounded-xl p-1 shadow-inner">
@@ -458,7 +505,6 @@ export default function AdminCalendario() {
                     </div>
                   ) : <p className="text-sm text-gray-500 mb-6 italic">Aún no hay embajadores unidos.</p>}
                   
-                  {/* SE ELIMINÓ EL BOTÓN DE "UNIRSE" PORQUE EL ADMIN NO SE PUEDE UNIR */}
                 </div>
               )}
             </div>
@@ -467,12 +513,12 @@ export default function AdminCalendario() {
             <div className="p-4 md:p-6 border-t border-gray-100 bg-gray-50 shrink-0">
               {eventoSeleccionado.creado_por_usuario_id === usuarioDatos?.id ? (
                 <div className="flex flex-wrap items-center justify-end gap-3">
-                  <button onClick={() => handleEliminar(eventoSeleccionado.id)} title="Eliminar de la base de datos" className="p-2.5 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-xl transition-colors">
+                  <button onClick={() => triggerEliminar(eventoSeleccionado.id)} title="Eliminar de la base de datos" className="p-2.5 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-xl transition-colors">
                     <Trash2 size={20} />
                   </button>
                   
                   {eventoSeleccionado.estado !== 'Cancelada' && (
-                    <button onClick={() => handleCancelarEvento(eventoSeleccionado.id)} className="flex items-center gap-1.5 px-4 py-2.5 bg-white border border-gray-200 hover:bg-gray-100 text-gray-700 font-bold rounded-xl transition-colors shadow-sm">
+                    <button onClick={() => triggerCancelarEvento(eventoSeleccionado.id)} className="flex items-center gap-1.5 px-4 py-2.5 bg-white border border-gray-200 hover:bg-gray-100 text-gray-700 font-bold rounded-xl transition-colors shadow-sm">
                       <Ban size={16} /> Cancelar Evento
                     </button>
                   )}
@@ -492,6 +538,48 @@ export default function AdminCalendario() {
           </>
         )}
       </div>
+
+      {/* ==========================================
+          ALERT DIALOG MODAL (Sustituye window.confirm)
+      ========================================== */}
+      {dialogoConfirmacion.isOpen && (
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-200">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-14 h-14 rounded-full bg-red-100 text-red-600 flex items-center justify-center mb-4">
+                <AlertCircle size={32} />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">
+                {dialogoConfirmacion.tipo === 'eliminar' ? 'Eliminar Actividad' : 'Cancelar Actividad'}
+              </h3>
+              <p className="text-sm text-gray-600 mb-6">
+                {dialogoConfirmacion.tipo === 'eliminar' 
+                  ? '¿Estás seguro de que deseas eliminar permanentemente esta actividad? Esta acción no se puede deshacer.'
+                  : '¿Estás seguro de que deseas marcar esta actividad como Cancelada? Los asistentes verán este cambio.'}
+              </p>
+              
+              <div className="flex items-center justify-center gap-3 w-full">
+                <button 
+                  onClick={() => !isProcessingAction && setDialogoConfirmacion({ isOpen: false, tipo: null, idActividad: null })}
+                  disabled={isProcessingAction}
+                  className="flex-1 px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  Regresar
+                </button>
+                <button 
+                  onClick={ejecutarAccionConfirmada}
+                  disabled={isProcessingAction}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 rounded-xl text-sm font-bold text-white hover:bg-red-700 transition-colors disabled:opacity-70"
+                >
+                  {isProcessingAction ? <Loader2 size={16} className="animate-spin" /> : null}
+                  {dialogoConfirmacion.tipo === 'eliminar' ? 'Sí, eliminar' : 'Sí, cancelar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
