@@ -20,6 +20,7 @@ import EmbajaCalendario from './pages/Embajadores/EmbajaCalendario';
 import AdminCalendario from './pages/Administrador/AdminCalendario';
 import AdminActividades from './pages/Administrador/AdminActividades';
 import { Toaster } from './components/ui/sonner';
+import Contacto from './pages/Contacto';
 export default function App() {
   return (
     <AuthProvider>
@@ -28,6 +29,7 @@ export default function App() {
         <Routes>
         <Route path="/" element={<PaginaPrincipal />} />
         <Route path="/Login" element={<Login />} />
+        <Route path="/contacto" element={<Contacto />} />
 
         <Route element={<ProtectedRoute allowedRoles={['Administrador']} />}>
           <Route path="/administrador" element={<AdminUsersLayout />}>

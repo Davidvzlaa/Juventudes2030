@@ -8,6 +8,7 @@ import {
 import { 
   Sun, Moon, Sunrise, Globe, Users, Target, Activity, ShieldCheck, MapPin 
 } from 'lucide-react';
+import { toast } from 'sonner'; // <-- 1. Importamos Sonner
 
 const getRelatedName = (relation: { nombre: string } | { nombre: string }[] | null | undefined) => {
   if (!relation) return null;
@@ -87,6 +88,10 @@ export default function AdminDashboard() {
           supabase.from('ods').select('numero, nombre').eq('activo', true)
         ]);
 
+        // Verificación de errores en las peticiones
+        if (resActividades.error) throw resActividades.error;
+        if (resUsuarios.error) throw resUsuarios.error;
+
         setRawData({
           actividades: resActividades.data || [],
           usuarios: resUsuarios.data || [],
@@ -94,8 +99,12 @@ export default function AdminDashboard() {
           catMunicipios: resMun.data || [],
           catOds: resOds.data || []
         });
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error cargando dashboard:", error);
+        // <-- 2. Añadimos el Toast para notificar al usuario si la BD falla
+        toast.error("Error al cargar las métricas del panel", {
+          description: "Ocurrió un problema al conectar con la base de datos. Por favor, recarga la página.",
+        });
       } finally {
         setLoading(false);
       }

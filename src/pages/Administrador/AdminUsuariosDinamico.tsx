@@ -1,442 +1,3 @@
-// import { useEffect, useRef, useState } from 'react';
-// import { supabase } from '../../lib/supabase';
-
-// interface Rol { id: number; nombre: string; }
-// interface Municipio { id: number; nombre: string; }
-// interface Proyecto { id: number; nombre: string; }
-
-// export default function AdminUsuariosDinamico() {
-//   const [showForm, setShowForm] = useState(false);
-//   const [usuariosList, setUsuariosList] = useState<any[]>([]);
-//   const [loading, setLoading] = useState(true);
-//   const [isSaving, setIsSaving] = useState(false);
-
-//   const [roles, setRoles] = useState<Rol[]>([]);
-//   const [municipios, setMunicipios] = useState<Municipio[]>([]);
-//   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
-
-//   // ==========================================
-//   // ESTADOS DE FILTROS Y ORDENAMIENTO
-//   // ==========================================
-//   const [filtroRol, setFiltroRol] = useState<'Todos' | 'Administrador' | 'Embajador'>('Todos');
-//   const [filtroMunicipio, setFiltroMunicipio] = useState<string>('Todos');
-//   const [filtroMesCumple, setFiltroMesCumple] = useState<string>('Todos'); 
-
-//   // ==========================================
-//   // ESTADOS DEL FORMULARIO Y EDICIÓN
-//   // ==========================================
-//   const [editId, setEditId] = useState<string | null>(null);
-//   const [formUsuario, setFormUsuario] = useState({
-//     nombre: '', apellido: '', correo: '', telefono: '', fecha_nacimiento: '', rol_id: 0, activo: true, visible: true
-//   });
-//   const [formEmbajador, setFormEmbajador] = useState({ municipio_id: 0 });
-
-//   const [tieneProyecto, setTieneProyecto] = useState(false);
-//   const [crearNuevoProyecto, setCrearNuevoProyecto] = useState(false);
-//   const [proyectoSeleccionadoId, setProyectoSeleccionadoId] = useState(0);
-
-//   const [logoFile, setLogoFile] = useState<File | null>(null);
-//   const [logoPreview, setLogoPreview] = useState<string | null>(null);
-//   const logoInputRef = useRef<HTMLInputElement>(null);
-//   const [formProyecto, setFormProyecto] = useState({ nombre: '', descripcion: '', activo: true });
-
-//   const meses = [
-//     { num: '01', nombre: 'Enero' }, { num: '02', nombre: 'Febrero' }, { num: '03', nombre: 'Marzo' },
-//     { num: '04', nombre: 'Abril' }, { num: '05', nombre: 'Mayo' }, { num: '06', nombre: 'Junio' },
-//     { num: '07', nombre: 'Julio' }, { num: '08', nombre: 'Agosto' }, { num: '09', nombre: 'Septiembre' },
-//     { num: '10', nombre: 'Octubre' }, { num: '11', nombre: 'Noviembre' }, { num: '12', nombre: 'Diciembre' }
-//   ];
-
-//   // ==========================================
-//   // FUNCIONES AUXILIARES
-//   // ==========================================
-//   const calcularEdad = (fechaNacimiento: string | null) => {
-//     if (!fechaNacimiento) return 'N/A';
-//     const hoy = new Date();
-//     const cumpleanos = new Date(fechaNacimiento);
-//     let edad = hoy.getFullYear() - cumpleanos.getFullYear();
-//     const mes = hoy.getMonth() - cumpleanos.getMonth();
-//     if (mes < 0 || (mes === 0 && hoy.getDate() < cumpleanos.getDate())) edad--;
-//     return edad;
-//   };
-
-//   const getMesDia = (fecha: string | null) => {
-//     if (!fecha) return '99-99'; 
-//     const [, mes, dia] = fecha.split('-');
-//     return `${mes}-${dia}`;
-//   };
-
-//   const processLogo = (file: File) => {
-//     setLogoFile(file);
-//     setLogoPreview(URL.createObjectURL(file));
-//   };
-
-//   // ==========================================
-//   // CARGA DE DATOS
-//   // ==========================================
-//   const fetchData = async () => {
-//     setLoading(true);
-//     const [resRoles, resMun, resProy] = await Promise.all([
-//       supabase.from('roles').select('id, nombre').eq('activo', true),
-//       supabase.from('municipios').select('id, nombre').eq('activo', true),
-//       supabase.from('proyectos_sociales').select('id, nombre').eq('activo', true)
-//     ]);
-
-//     if (resRoles.data) setRoles(resRoles.data);
-//     if (resMun.data) setMunicipios(resMun.data);
-//     if (resProy.data) setProyectos(resProy.data);
-
-//     const { data: usuariosData, error: usrErr } = await supabase
-//       .from('usuarios')
-//       .select(`
-//         id, nombre, apellido, correo, telefono, fecha_nacimiento, activo,
-//         roles(id, nombre),
-//         embajadores(
-//           municipio_id, proyecto_social_id,
-//           municipios(nombre),
-//           proyectos_sociales(nombre)
-//         ),
-//         actividades!creado_por_usuario_id(id)
-//       `);
-
-//     if (!usrErr && usuariosData) setUsuariosList(usuariosData);
-//     setLoading(false);
-//   };
-
-//   useEffect(() => { fetchData(); }, []);
-
-//   // ==========================================
-//   // LÓGICA DE EDICIÓN Y ELIMINACIÓN
-//   // ==========================================
-//   const handleEdit = (u: any) => {
-//     setEditId(u.id);
-//     setFormUsuario({
-//       nombre: u.nombre || '', apellido: u.apellido || '', correo: u.correo || '',
-//       telefono: u.telefono || '', fecha_nacimiento: u.fecha_nacimiento || '',
-//       rol_id: u.roles?.id || 0, activo: u.activo, visible: true
-//     });
-
-//     const esEmbajadorEditar = u.roles?.nombre === 'Embajador';
-//     if (esEmbajadorEditar && u.embajadores && u.embajadores.length > 0) {
-//       const emb = u.embajadores[0];
-//       setFormEmbajador({ municipio_id: emb.municipio_id || 0 });
-//       if (emb.proyecto_social_id) {
-//         setTieneProyecto(true);
-//         setProyectoSeleccionadoId(emb.proyecto_social_id);
-//         setCrearNuevoProyecto(false);
-//       } else {
-//         setTieneProyecto(false);
-//         setProyectoSeleccionadoId(0);
-//       }
-//     } else {
-//       setFormEmbajador({ municipio_id: 0 });
-//       setTieneProyecto(false);
-//     }
-    
-//     setShowForm(true);
-//     window.scrollTo({ top: 0, behavior: 'smooth' });
-//   };
-
-//   const handleDelete = async (id: string) => {
-//     if (!window.confirm("¿Estás seguro de eliminar este usuario?")) return;
-//     const { error } = await supabase.from('usuarios').delete().eq('id', id);
-//     if (error) alert("Error al eliminar. Sugerencia: Desactívalo desde 'Editar'.");
-//     else fetchData();
-//   };
-
-//   const resetForm = () => {
-//     setEditId(null);
-//     setFormUsuario({ nombre: '', apellido: '', correo: '', telefono: '', fecha_nacimiento: '', rol_id: 0, activo: true, visible: true });
-//     setFormEmbajador({ municipio_id: 0 });
-//     setTieneProyecto(false);
-//     setCrearNuevoProyecto(false);
-//     setProyectoSeleccionadoId(0);
-//     setFormProyecto({ nombre: '', descripcion: '', activo: true });
-//     setLogoFile(null);
-//     setLogoPreview(null);
-//     setShowForm(false); 
-//     window.scrollTo({ top: 0, behavior: 'smooth' });
-//   };
-
-//   // ==========================================
-//   // MOTOR DE FILTRADO Y ORDENAMIENTO 
-//   // ==========================================
-//   let usuariosFiltrados = usuariosList.filter(u => {
-//     const nombreRol = u.roles?.nombre;
-//     if (filtroRol !== 'Todos' && nombreRol !== filtroRol) return false;
-
-//     if (filtroMunicipio !== 'Todos') {
-//       const datosEmbajador = u.embajadores && u.embajadores.length > 0 ? u.embajadores[0] : null;
-//       if (datosEmbajador?.municipios?.nombre !== filtroMunicipio) return false;
-//     }
-
-//     if (filtroMesCumple !== 'Todos') {
-//       if (!u.fecha_nacimiento) return false;
-//       const mes = u.fecha_nacimiento.split('-')[1];
-//       if (mes !== filtroMesCumple) return false;
-//     }
-//     return true;
-//   });
-
-//   usuariosFiltrados.sort((a, b) => getMesDia(a.fecha_nacimiento).localeCompare(getMesDia(b.fecha_nacimiento)));
-
-//   const rolSeleccionado = roles.find(r => r.id === formUsuario.rol_id);
-//   const esEmbajador = rolSeleccionado?.nombre === 'Embajador';
-
-//   // ==========================================
-//   // GUARDAR (UPSERT)
-//   // ==========================================
-//   const handleSubmit = async (e: React.FormEvent) => {
-//     e.preventDefault();
-//     if (formUsuario.rol_id === 0) return alert("Selecciona un rol para el usuario.");
-//     if (esEmbajador && formEmbajador.municipio_id === 0) return alert("Selecciona un municipio para el embajador.");
-
-//     setIsSaving(true);
-//     try {
-//       let usuarioId = editId;
-
-//       if (editId) {
-//         await supabase.from('usuarios').update(formUsuario).eq('id', editId);
-//       } else {
-//         const { data: usuarioCreado, error: errUsuario } = await supabase.from('usuarios').insert([formUsuario]).select('id').single();
-//         if (errUsuario) throw errUsuario;
-//         usuarioId = usuarioCreado.id;
-//       }
-
-//       if (esEmbajador) {
-//         let proyectoFinalId = null;
-//         if (tieneProyecto) {
-//           if (crearNuevoProyecto) {
-//             if (!formProyecto.nombre) throw new Error("Escribe el nombre del proyecto nuevo.");
-//             let finalLogoUrl = null;
-//             if (logoFile) {
-//               const fileExt = logoFile.name.split('.').pop();
-//               const fileName = `logo_${Date.now()}.${fileExt}`;
-//               await supabase.storage.from('imagenes').upload(fileName, logoFile);
-//               finalLogoUrl = supabase.storage.from('imagenes').getPublicUrl(fileName).data.publicUrl;
-//             }
-//             const { data: proyCreado, error: errProy } = await supabase.from('proyectos_sociales').insert([{ ...formProyecto, logo: finalLogoUrl, activo: true }]).select('id').single();
-//             if (errProy) throw errProy;
-//             proyectoFinalId = proyCreado.id;
-//           } else {
-//             proyectoFinalId = proyectoSeleccionadoId;
-//           }
-//         }
-        
-//         const { error: errEmbajador } = await supabase.from('embajadores').upsert({
-//           usuario_id: usuarioId,
-//           municipio_id: formEmbajador.municipio_id,
-//           proyecto_social_id: proyectoFinalId,
-//           activo: true
-//         }, { onConflict: 'usuario_id' });
-
-//         if (errEmbajador) throw errEmbajador;
-//       }
-
-//       alert(`¡Registro ${editId ? 'actualizado' : 'guardado'} con éxito!`);
-//       resetForm(); 
-//       fetchData(); 
-      
-//     } catch (error: any) { alert(error.message); } finally { setIsSaving(false); }
-//   };
-
-//   if (loading) return <div className="p-8">Cargando módulo de usuarios...</div>;
-
-//   return (
-//     <div className="max-w-7xl mx-auto space-y-6">
-      
-//       <div className="flex justify-between items-center bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-//         <div>
-//           <h1 className="text-3xl font-bold text-gray-800">Directorio de Usuarios</h1>
-//           <p className="text-gray-600 mt-1">Ordenados cronológicamente por mes de cumpleaños.</p>
-//         </div>
-//         {!showForm && (
-//           <button onClick={() => setShowForm(true)} className="bg-blue-600 text-white px-6 py-3 rounded-md font-bold hover:bg-blue-700 transition flex items-center space-x-2">
-//             <span>➕</span><span>Añadir Nuevo</span>
-//           </button>
-//         )}
-//       </div>
-
-//       {showForm && (
-//         <div className="bg-white p-8 rounded-lg shadow-md border-t-4 border-blue-600 animate-in fade-in slide-in-from-top-4">
-//           <div className="flex justify-between items-center mb-6">
-//             <h2 className="text-2xl font-bold text-gray-800">{editId ? 'Editar Registro' : 'Alta de Registro'}</h2>
-//             <button onClick={resetForm} className="text-gray-500 hover:text-red-500 font-bold text-xl">✕</button>
-//           </div>
-          
-//           <form onSubmit={handleSubmit} className="space-y-8">
-//             <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
-//               <h3 className="text-lg font-semibold mb-4 text-blue-900 border-b pb-2">1. Datos Personales</h3>
-//               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-//                 <div><label className="block text-sm font-medium mb-1">Nombre</label><input type="text" required className="w-full p-2 border rounded" value={formUsuario.nombre} onChange={e => setFormUsuario({...formUsuario, nombre: e.target.value})} /></div>
-//                 <div><label className="block text-sm font-medium mb-1">Apellido</label><input type="text" required className="w-full p-2 border rounded" value={formUsuario.apellido} onChange={e => setFormUsuario({...formUsuario, apellido: e.target.value})} /></div>
-//                 <div><label className="block text-sm font-medium mb-1">Correo Electrónico</label><input type="email" required className="w-full p-2 border rounded" value={formUsuario.correo} onChange={e => setFormUsuario({...formUsuario, correo: e.target.value})} /></div>
-//                 <div><label className="block text-sm font-medium mb-1">Teléfono</label><input type="tel" className="w-full p-2 border rounded" value={formUsuario.telefono} onChange={e => setFormUsuario({...formUsuario, telefono: e.target.value})} /></div>
-//                 <div><label className="block text-sm font-medium mb-1">Fecha de Nacimiento</label><input type="date" required className="w-full p-2 border rounded" value={formUsuario.fecha_nacimiento} onChange={e => setFormUsuario({...formUsuario, fecha_nacimiento: e.target.value})} /></div>
-//                 <div>
-//                   <label className="block text-sm font-bold mb-1 text-gray-700">Asignar Rol</label>
-//                   <select required className="w-full p-2 border rounded bg-white" value={formUsuario.rol_id} onChange={e => setFormUsuario({...formUsuario, rol_id: Number(e.target.value)})}>
-//                     <option value="0">-- Selecciona un Rol --</option>
-//                     {roles.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-//                   </select>
-//                 </div>
-//               </div>
-//             </div>
-
-//             {esEmbajador && (
-//               <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
-//                 <h3 className="text-lg font-semibold mb-4 text-blue-900 border-b border-blue-200 pb-2">2. Perfil de Embajador</h3>
-//                 <div className="mb-6">
-//                   <label className="block text-sm font-bold mb-1">Municipio de Operación</label>
-//                   <select required className="w-full p-2 border rounded bg-white" value={formEmbajador.municipio_id} onChange={e => setFormEmbajador({...formEmbajador, municipio_id: Number(e.target.value)})}>
-//                     <option value="0">-- Selecciona --</option>
-//                     {municipios.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-//                   </select>
-//                 </div>
-
-//                 <div className="bg-white p-4 rounded border border-gray-200">
-//                   <label className="flex items-center space-x-3 cursor-pointer mb-4">
-//                     <input type="checkbox" className="w-5 h-5 text-blue-600" checked={tieneProyecto} onChange={e => setTieneProyecto(e.target.checked)} />
-//                     <span className="font-bold text-gray-700">¿Tiene un Proyecto Social asignado?</span>
-//                   </label>
-
-//                   {tieneProyecto && (
-//                     <div className="pl-8 space-y-4 border-l-2 border-blue-300 ml-2">
-//                       <div className="flex space-x-4">
-//                         <button type="button" onClick={() => setCrearNuevoProyecto(false)} className={`px-4 py-2 text-sm font-bold rounded ${!crearNuevoProyecto ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}>Proyecto Existente</button>
-//                         <button type="button" onClick={() => setCrearNuevoProyecto(true)} className={`px-4 py-2 text-sm font-bold rounded ${crearNuevoProyecto ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'}`}>+ Crear Nuevo</button>
-//                       </div>
-
-//                       {!crearNuevoProyecto ? (
-//                         <select className="w-full p-2 border rounded bg-gray-50" value={proyectoSeleccionadoId} onChange={e => setProyectoSeleccionadoId(Number(e.target.value))}>
-//                           <option value="0">-- Buscar Proyecto --</option>
-//                           {proyectos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-//                         </select>
-//                       ) : (
-//                         <div className="grid grid-cols-1 gap-3 bg-gray-50 p-4 rounded border">
-//                           <div><label className="block text-xs font-bold text-gray-500 mb-1">Nombre</label><input type="text" className="w-full p-2 border rounded" value={formProyecto.nombre} onChange={e => setFormProyecto({...formProyecto, nombre: e.target.value})} /></div>
-//                           <div><label className="block text-xs font-bold text-gray-500 mb-1">Descripción</label><textarea className="w-full p-2 border rounded" rows={2} value={formProyecto.descripcion} onChange={e => setFormProyecto({...formProyecto, descripcion: e.target.value})}></textarea></div>
-//                           <div>
-//                             <label className="block text-xs font-bold text-gray-500 mb-1">Logotipo del Proyecto</label>
-//                             <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files?.[0]) processLogo(e.dataTransfer.files[0]); }} onClick={() => logoInputRef.current?.click()} className="border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center bg-white cursor-pointer">
-//                               <input type="file" accept="image/*" className="hidden" ref={logoInputRef} onChange={(e) => { if (e.target.files?.[0]) processLogo(e.target.files[0]); }} />
-//                               {logoPreview ? <img src={logoPreview} alt="Preview" className="h-20 object-contain rounded" /> : <p className="text-sm text-gray-500">Arrastra el logo aquí</p>}
-//                             </div>
-//                           </div>
-//                         </div>
-//                       )}
-//                     </div>
-//                   )}
-//                 </div>
-//               </div>
-//             )}
-
-//             <div className="flex justify-end pt-6 border-t border-gray-200 space-x-4">
-//               <button type="button" onClick={resetForm} className="bg-gray-300 text-gray-800 px-6 py-3 rounded-md font-bold hover:bg-gray-400">Cancelar</button>
-//               <button type="submit" disabled={isSaving} className="bg-gray-900 text-white px-8 py-3 rounded-md font-bold hover:bg-gray-800 disabled:bg-gray-400">{isSaving ? 'Guardando...' : (editId ? 'Actualizar' : 'Guardar Todo')}</button>
-//             </div>
-//           </form>
-//         </div>
-//       )}
-
-//       {/* ==========================================
-//           BARRA DE FILTROS 
-//       ========================================== */}
-//       <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-//         <div className="flex space-x-2 mb-6 border-b pb-4 overflow-x-auto">
-//           <button onClick={() => setFiltroRol('Todos')} className={`px-5 py-2 rounded-full font-bold text-sm whitespace-nowrap transition ${filtroRol === 'Todos' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Todos</button>
-//           <button onClick={() => setFiltroRol('Administrador')} className={`px-5 py-2 rounded-full font-bold text-sm whitespace-nowrap transition ${filtroRol === 'Administrador' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Administradores</button>
-//           <button onClick={() => setFiltroRol('Embajador')} className={`px-5 py-2 rounded-full font-bold text-sm whitespace-nowrap transition ${filtroRol === 'Embajador' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Embajadores</button>
-//         </div>
-
-//         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-//           <div>
-//             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Municipio</label>
-//             <select className="w-full p-2.5 border rounded-md bg-gray-50 disabled:opacity-50" value={filtroMunicipio} onChange={e => setFiltroMunicipio(e.target.value)} disabled={filtroRol === 'Administrador'}>
-//               <option value="Todos">Todos</option>
-//               {municipios.map(m => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
-//             </select>
-//           </div>
-//           <div>
-//             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Mes de Cumpleaños</label>
-//             <select className="w-full p-2.5 border rounded-md bg-gray-50" value={filtroMesCumple} onChange={e => setFiltroMesCumple(e.target.value)}>
-//               <option value="Todos">Cualquier mes</option>
-//               {meses.map(m => <option key={m.num} value={m.num}>{m.nombre}</option>)}
-//             </select>
-//           </div>
-//           <div className="flex items-end">
-//             <button onClick={() => { setFiltroRol('Todos'); setFiltroMunicipio('Todos'); setFiltroMesCumple('Todos'); }} className="w-full bg-white border-2 border-gray-200 text-gray-600 font-bold p-2.5 rounded-md hover:bg-gray-50 transition">
-//               Limpiar Filtros
-//             </button>
-//           </div>
-//         </div>
-//       </div>
-
-//       {/* ==========================================
-//           TABLA 
-//       ========================================== */}
-//       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-//         <div className="overflow-x-auto">
-//           <table className="min-w-full text-left border-collapse text-sm">
-//             <thead>
-//               <tr className="bg-gray-800 text-white">
-//                 <th className="border-b p-3 w-10 text-center rounded-tl-md">No.</th>
-//                 <th className="border-b p-3 whitespace-nowrap">Nombre Completo</th>
-//                 <th className="border-b p-3 text-center">Edad</th>
-//                 <th className="border-b p-3 whitespace-nowrap">Fecha de Nac.</th>
-//                 <th className="border-b p-3">Contacto</th>
-//                 <th className="border-b p-3">Rol</th>
-//                 <th className="border-b p-3">Municipio</th>
-//                 <th className="border-b p-3">Proyecto Social</th>
-//                 <th className="border-b p-3 text-center">Actividades</th>
-//                 <th className="border-b p-3 text-center">Estado</th>
-//                 <th className="border-b p-3 text-center rounded-tr-md">Acciones</th>
-//               </tr>
-//             </thead>
-//             <tbody>
-//               {usuariosFiltrados.length === 0 ? (
-//                 <tr><td colSpan={11} className="p-8 text-center text-gray-500">No se encontraron usuarios.</td></tr>
-//               ) : (
-//                 usuariosFiltrados.map((u, index) => {
-//                   const esRolEmbajador = u.roles?.nombre === 'Embajador';
-//                   const datosEmbajador = u.embajadores && u.embajadores.length > 0 ? u.embajadores[0] : null;
-//                   const cantActividades = u.actividades ? u.actividades.length : 0;
-//                   const edadCalculada = calcularEdad(u.fecha_nacimiento);
-
-//                   return (
-//                     <tr key={u.id} className="hover:bg-gray-50 transition-colors">
-//                       <td className="border-b p-3 text-center font-bold text-gray-400">{index + 1}</td>
-//                       <td className="border-b p-3 font-bold text-gray-800 whitespace-nowrap">{u.nombre} {u.apellido}</td>
-//                       <td className="border-b p-3 text-center font-medium text-gray-700">{edadCalculada !== 'N/A' ? `${edadCalculada} años` : '-'}</td>
-//                       <td className="border-b p-3 text-gray-600 whitespace-nowrap">{u.fecha_nacimiento || '-'}</td>
-                      
-//                       {/* NUEVA COLUMNA CONTACTO */}
-//                       <td className="border-b p-3">
-//                         <div className="text-gray-800 font-medium">{u.correo}</div>
-//                         <div className="text-xs text-gray-500">{u.telefono || 'Sin teléfono'}</div>
-//                       </td>
-
-//                       <td className="border-b p-3"><span className={`px-2 py-1 rounded-md text-xs font-bold ${esRolEmbajador ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>{u.roles?.nombre || 'Sin rol'}</span></td>
-//                       <td className="border-b p-3 text-gray-600">{esRolEmbajador && datosEmbajador?.municipios?.nombre ? datosEmbajador.municipios.nombre : '-'}</td>
-//                       <td className="border-b p-3 text-blue-600 font-semibold max-w-[150px] truncate">{esRolEmbajador && datosEmbajador?.proyectos_sociales?.nombre ? datosEmbajador.proyectos_sociales.nombre : '-'}</td>
-//                       <td className="border-b p-3 text-center">{esRolEmbajador ? <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full font-bold text-xs">{cantActividades}</span> : '-'}</td>
-//                       <td className="border-b p-3 text-center"><span className={`px-2 py-1 rounded text-xs font-bold ${u.activo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{u.activo ? 'Activo' : 'Baja'}</span></td>
-//                       <td className="border-b p-3 text-center space-x-3 whitespace-nowrap">
-//                         <button onClick={() => handleEdit(u)} className="text-blue-600 font-bold hover:underline">Editar</button>
-//                         <button onClick={() => handleDelete(u.id)} className="text-red-600 font-bold hover:underline">Eliminar</button>
-//                       </td>
-//                     </tr>
-//                   );
-//                 })
-//               )}
-//             </tbody>
-//           </table>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { createClient } from '@supabase/supabase-js'; 
@@ -444,6 +5,19 @@ import {
   Users, PlusCircle, Search, Edit2, Trash2, X, Save, 
   Loader2, UploadCloud, MapPin, Calendar, Mail, Phone, Shield, Folder, Lock
 } from 'lucide-react';
+import { toast } from 'sonner';
+
+// Importaciones de shadcn/ui (Ajusta la ruta según tu proyecto)
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Rol { id: number; nombre: string; }
 interface Municipio { id: number; nombre: string; }
@@ -463,6 +37,11 @@ export default function AdminUsuariosDinamico() {
   const [usuariosList, setUsuariosList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Estados para Alert Dialog (Eliminar)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [roles, setRoles] = useState<Rol[]>([]);
   const [municipios, setMunicipios] = useState<Municipio[]>([]);
@@ -559,8 +138,6 @@ export default function AdminUsuariosDinamico() {
     });
 
     const esEmbajadorEditar = u.roles?.nombre === 'Embajador';
-    
-    // SOLUCIÓN AL BUG DE CARGA: Verificamos de forma segura si la relación es Arreglo u Objeto
     const emb = Array.isArray(u.embajadores) ? u.embajadores[0] : u.embajadores;
 
     if (esEmbajadorEditar && emb) {
@@ -582,11 +159,34 @@ export default function AdminUsuariosDinamico() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("¿Estás seguro de eliminar este usuario?")) return;
-    const { error } = await supabase.from('usuarios').delete().eq('id', id);
-    if (error) alert("Error al eliminar. Sugerencia: Desactívalo desde 'Editar'.");
-    else fetchData();
+  // ==========================================
+  // FLUJO DE ELIMINACIÓN CON ALERT DIALOG
+  // ==========================================
+  const confirmDelete = (id: string) => {
+    setUserToDelete(id);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const executeDelete = async () => {
+    if (!userToDelete) return;
+    setIsDeleting(true);
+    
+    try {
+      const { error } = await supabase.from('usuarios').delete().eq('id', userToDelete);
+      
+      if (error) throw error;
+      
+      toast.success("Usuario eliminado exitosamente.");
+      fetchData();
+    } catch (error: any) {
+      toast.error("No se pudo eliminar al usuario.", {
+        description: "Sugerencia: Intenta desactivarlo cambiando su estado desde 'Editar'.",
+      });
+    } finally {
+      setIsDeleting(false);
+      setIsDeleteDialogOpen(false);
+      setUserToDelete(null);
+    }
   };
 
   const resetForm = () => {
@@ -623,7 +223,6 @@ export default function AdminUsuariosDinamico() {
   const rolSeleccionado = roles.find(r => r.id === formUsuario.rol_id);
   const esEmbajador = rolSeleccionado?.nombre === 'Embajador';
 
-  // BANDERA PARA OCULTAR COLUMNAS DINÁMICAMENTE
   const mostrarColumnasEmbajador = filtroRol !== 'Administrador';
 
   // ==========================================
@@ -631,24 +230,21 @@ export default function AdminUsuariosDinamico() {
   // ==========================================
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formUsuario.rol_id === 0) return alert("Selecciona un rol para el usuario.");
-    if (esEmbajador && formEmbajador.municipio_id === 0) return alert("Selecciona un municipio para el embajador.");
+    if (formUsuario.rol_id === 0) return toast.error("Requerido", { description: "Selecciona un rol para el usuario." });
+    if (esEmbajador && formEmbajador.municipio_id === 0) return toast.error("Requerido", { description: "Selecciona un municipio para el embajador." });
 
     setIsSaving(true);
     try {
       let usuarioId = editId;
 
       if (editId) {
-        // ACTUALIZAR REGISTRO EXISTENTE
         const { error: errUpdate } = await supabase.from('usuarios').update(formUsuario).eq('id', editId);
         if (errUpdate) throw errUpdate;
       } else {
-        // CREAR NUEVO USUARIO (Sin cerrar la sesión del admin actual)
         const authClient = createClient(supabaseUrl, supabaseKey, {
           auth: { persistSession: false, autoRefreshToken: false }
         });
 
-        // Registramos al usuario usando la contraseña constante
         const { data: authData, error: authErr } = await authClient.auth.signUp({
           email: formUsuario.correo,
           password: PASSWORD_TEMPORAL_DEFAULT,
@@ -659,7 +255,6 @@ export default function AdminUsuariosDinamico() {
         const newUserId = authData.user?.id;
         if (!newUserId) throw new Error("No se pudo crear la credencial de acceso. Verifica que el correo no esté ya registrado.");
 
-        // Registramos su perfil en la tabla pública
         const payloadNuevoUsuario = { 
           ...formUsuario, 
           id: newUserId,
@@ -672,7 +267,6 @@ export default function AdminUsuariosDinamico() {
         usuarioId = newUserId;
       }
 
-      // LÓGICA DE PROYECTOS Y EMBAJADORES (También se ejecuta al actualizar)
       if (esEmbajador && usuarioId) {
         let proyectoFinalId = null;
         if (tieneProyecto) {
@@ -693,7 +287,6 @@ export default function AdminUsuariosDinamico() {
           }
         }
         
-        // El Upsert actualizará si ya existe o lo creará si es nuevo
         const { error: errEmbajador } = await supabase.from('embajadores').upsert({
           usuario_id: usuarioId,
           municipio_id: formEmbajador.municipio_id,
@@ -704,11 +297,18 @@ export default function AdminUsuariosDinamico() {
         if (errEmbajador) throw errEmbajador;
       }
 
-      alert(`¡Registro ${editId ? 'actualizado' : 'guardado'} con éxito! ${!editId ? `\n\nEl usuario ya puede ingresar con el correo ${formUsuario.correo} y la contraseña genérica.` : ''}`);
+      toast.success(editId ? 'Registro actualizado con éxito' : 'Usuario guardado exitosamente', {
+        description: !editId ? `El usuario ya puede ingresar con su correo y la contraseña genérica.` : undefined
+      });
+      
       resetForm(); 
       fetchData(); 
       
-    } catch (error: any) { alert(error.message); } finally { setIsSaving(false); }
+    } catch (error: any) { 
+      toast.error("Ocurrió un error", { description: error.message }); 
+    } finally { 
+      setIsSaving(false); 
+    }
   };
 
   if (loading) return (
@@ -1038,7 +638,7 @@ export default function AdminUsuariosDinamico() {
                           <button onClick={() => handleEdit(u)} className="text-[#00689D] hover:bg-blue-50 p-2 rounded-md transition-colors" title="Editar">
                             <Edit2 size={16} />
                           </button>
-                          <button onClick={() => handleDelete(u.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-md transition-colors" title="Eliminar">
+                          <button onClick={() => confirmDelete(u.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-md transition-colors" title="Eliminar">
                             <Trash2 size={16} />
                           </button>
                         </div>
@@ -1051,6 +651,31 @@ export default function AdminUsuariosDinamico() {
           </table>
         </div>
       </div>
+
+      {/* ==========================================
+          MODAL DE CONFIRMACIÓN DE ELIMINACIÓN
+      ========================================== */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás seguro de eliminar este usuario?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción eliminará de forma permanente al usuario del sistema. Si el usuario tiene actividades registradas, te recomendamos mejor cambiar su estado a "Baja" desde el botón editar para mantener el historial.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={executeDelete} 
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {isDeleting ? 'Eliminando...' : 'Sí, eliminar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 }
