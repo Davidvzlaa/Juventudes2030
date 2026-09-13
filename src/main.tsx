@@ -46,7 +46,7 @@ export default function App() {
             <Route index element={<AdminActividades />} />
           </Route>
           <Route path="/administrador/configuracion" element={<AdminLayout />}>
-            <Route index element={<Navigate to="municipios" replace />} />
+            <Route index element={<Navigate to="roles" replace />} />
             <Route path=":catalogo" element={<AdminCatalogos />} />
           </Route>
           <Route path="/administrador/catalogos" element={<Navigate to="/administrador/configuracion/municipios" replace />} />
