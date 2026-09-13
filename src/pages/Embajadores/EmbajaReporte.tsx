@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { supabase } from '@/lib/supabase'; 
+import { supabase } from '../../lib/supabase'; 
 
 type EstadoReporte = 'Sin empezar' | 'Borrador' | 'Enviado' | 'Regresado';
 
@@ -64,7 +64,6 @@ export default function EmbajaReporte() {
         setCurrentUserId(userId);
 
         const { data: categorias } = await supabase.from('categorias_beneficiarios').select('id, nombre').eq('activo', true).order('id');
-        // Le inyectamos virtualmente la fila de total para la interfaz
         if (categorias) setCategoriasDB([...categorias, { id: 99, nombre: 'Total Beneficiarios' }]);
 
         const { data: acciones } = await supabase.from('tipos_accion').select('id, nombre').eq('activo', true).order('id');
@@ -98,7 +97,7 @@ export default function EmbajaReporte() {
   }, []);
 
   // ==========================================
-  // CARGAR ACTIVIDADES DEL REPORTE SELECCIONADO
+  // CARGAR ACTIVIDADES DEL REPORTE SELECCIONADO (Creadas y Unidas)
   // ==========================================
   const seleccionarReporte = async (reporte: any) => {
     setReporteSeleccionado(reporte);
@@ -112,8 +111,8 @@ export default function EmbajaReporte() {
       const ultimoDia = new Date(reporte.anio, reporte.mes, 0).getDate(); 
       const fechaFin = reporte.periodo_fin || `${reporte.anio}-${mesStr}-${ultimoDia}`;
 
-      // Traer actividades del mes usando JOIN para rapidez
-      const { data: actividadesMes, error: errAct } = await supabase
+      // 1. Traer actividades CREADAS por el usuario en el rango del mes
+      const { data: actividadesCreadas, error: errAct } = await supabase
         .from('actividades')
         .select(`
           *,
@@ -126,40 +125,95 @@ export default function EmbajaReporte() {
         `)
         .eq('creado_por_usuario_id', currentUserId) 
         .gte('fecha_evento', fechaInicio)   
-        .lte('fecha_evento', fechaFin)       
-        .order('fecha_evento', { ascending: true }); 
+        .lte('fecha_evento', fechaFin)
+        .is('fecha_eliminacion', null);
 
       if (errAct) throw errAct;
-      if (!actividadesMes || actividadesMes.length === 0) return;
 
-      const actividadesCompletas = actividadesMes.map((act: any) => {
-        let beneficiariosObj: any = {};
-        act.actividad_beneficiarios?.forEach((b: any) => {
-          beneficiariosObj[b.categoria_id] = { hombres: b.hombres?.toString(), mujeres: b.mujeres?.toString(), total: b.total?.toString() };
-        });
+      // 2. Traer actividades a las que SE UNIÓ en el rango del mes
+      const { data: actividadesUnidas, error: errUnidas } = await supabase
+        .from('actividad_asistentes')
+        .select(`
+          actividad_id,
+          actividades (
+            *,
+            municipios(nombre),
+            actividad_beneficiarios(categoria_id, hombres, mujeres, total),
+            actividad_acciones(tipo_accion_id, cantidad),
+            actividad_sostenibilidad(area_id),
+            actividad_ods(ods_id, es_principal, ods(numero, nombre)),
+            evidencias(id, url_archivo)
+          )
+        `)
+        .eq('usuario_id', currentUserId);
 
-        let odsSeleccionados: number[] = [];
-        if (act.actividad_ods) {
-          const principal = act.actividad_ods.find((o: any) => o.es_principal);
-          const secundarios = act.actividad_ods.filter((o: any) => !o.es_principal);
-          if (principal) odsSeleccionados.push(principal.ods_id);
-          odsSeleccionados.push(...secundarios.map((o:any) => o.ods_id));
+      if (errUnidas) throw errUnidas;
+
+      // 3. Unir y quitar duplicados usando un Map
+      const actividadesMap = new Map();
+
+      // Procesar creadas
+      actividadesCreadas?.forEach((act: any) => {
+        actividadesMap.set(act.id, { ...act, es_propia: true });
+      });
+
+      // Procesar unidas (Filtrando por fechas, ya que la tabla puente no filtra fechas directo)
+      actividadesUnidas?.forEach((item: any) => {
+        const act: any = Array.isArray(item.actividades) ? item.actividades[0] : item.actividades;
+        
+        if (act && act.fecha_eliminacion === null) {
+          // Verificar que esté dentro del mes del reporte
+          if (act.fecha_evento >= fechaInicio && act.fecha_evento <= fechaFin) {
+            if (!actividadesMap.has(act.id)) {
+              actividadesMap.set(act.id, { 
+                ...act, 
+                es_propia: act.creado_por_usuario_id === currentUserId 
+              });
+            }
+          }
         }
+      });
 
-        return {
-          ...act,
-          rango_edad: act.rango_edad_beneficiarios,
-          domicilio: { calle: act.calle || '', colonia: act.colonia || '', municipio: act.municipio_id || '' },
-          beneficiarios: beneficiariosObj,
-          ods_seleccionados: odsSeleccionados,
-          evidencias: act.evidencias ? act.evidencias.map((ev:any) => ({ id: ev.id, url: ev.url_archivo })) : [],
-          es_propia: act.creado_por_usuario_id === currentUserId
-        };
+      // 4. Formatear la data combinada para el formulario
+      const actividadesCompletas = Array.from(actividadesMap.values())
+        .sort((a, b) => new Date(a.fecha_evento).getTime() - new Date(b.fecha_evento).getTime())
+        .map((act: any) => {
+          let beneficiariosObj: any = {};
+          act.actividad_beneficiarios?.forEach((b: any) => {
+            beneficiariosObj[b.categoria_id] = { hombres: b.hombres?.toString(), mujeres: b.mujeres?.toString(), total: b.total?.toString() };
+          });
+
+          let odsSeleccionados: number[] = [];
+          if (act.actividad_ods) {
+            const principal = act.actividad_ods.find((o: any) => o.es_principal);
+            const secundarios = act.actividad_ods.filter((o: any) => !o.es_principal);
+            if (principal) odsSeleccionados.push(principal.ods_id);
+            odsSeleccionados.push(...secundarios.map((o:any) => o.ods_id));
+          }
+
+          // Identificar tipo de acción
+          let tipo_actividad_nombre = '';
+          if (act.actividad_acciones && act.actividad_acciones.length > 0) {
+             const accionRel = act.actividad_acciones[0];
+             const accionCat = accionesDB.find(a => a.id === accionRel.tipo_accion_id);
+             if (accionCat) tipo_actividad_nombre = accionCat.nombre;
+          }
+
+          return {
+            ...act,
+            tipo_actividad: tipo_actividad_nombre,
+            rango_edad: act.rango_edad_beneficiarios,
+            domicilio: { calle: act.calle || '', colonia: act.colonia || '', municipio: act.municipio_id || '' },
+            beneficiarios: beneficiariosObj,
+            ods_seleccionados: odsSeleccionados,
+            evidencias: act.evidencias ? act.evidencias.map((ev:any) => ({ id: ev.id, url: ev.url_archivo })) : []
+          };
       });
 
       setActividades(actividadesCompletas);
     } catch (error) {
       console.error("Error cargando actividades del mes:", error);
+      toast.error("Error al cargar las actividades del reporte.");
     }
   };
 
@@ -244,7 +298,6 @@ export default function EmbajaReporte() {
         
         const actividadData = {
           nombre: actividadEnEdicion.nombre,
-          tipo_actividad: actividadEnEdicion.tipo_actividad, 
           fecha_evento: actividadEnEdicion.fecha_evento,
           hora_inicio: actividadEnEdicion.hora_inicio || null,
           hora_fin: actividadEnEdicion.hora_fin || null,
@@ -269,6 +322,9 @@ export default function EmbajaReporte() {
           
           if (errIns) throw errIns;
           actId = insertada.id;
+
+          // Lo registramos como participante de su propia actividad nueva
+          await supabase.from('actividad_asistentes').insert([{ actividad_id: actId, usuario_id: currentUserId }]);
         } else {
           const { error: errAct } = await supabase.from('actividades').update(actividadData).eq('id', actId);
           if (errAct) throw errAct;
@@ -356,10 +412,13 @@ export default function EmbajaReporte() {
   };
 
   const crearNuevaActividad = () => {
+    const mesStr = String(reporteSeleccionado.mes).padStart(2, '0');
     setActividadEnEdicion({
       id: `act-${Date.now()}`, 
       es_propia: true, 
-      nombre: '', tipo_actividad: '', fecha_evento: '', hora_inicio: '', hora_fin: '',
+      nombre: '', tipo_actividad: '', 
+      fecha_evento: `${reporteSeleccionado.anio}-${mesStr}-01`, 
+      hora_inicio: '', hora_fin: '',
       ods_seleccionados: [], 
       lugar: '', domicilio: { municipio: '', colonia: '', calle: '' },
       beneficiarios: {}, rango_edad: '', descripcion: '', evidencias: []
