@@ -30,7 +30,7 @@ export default function ParticipaSection() {
             </p>
           </div>
 
-          <a href="#inicio" className="group flex w-fit items-center gap-4 bg-white px-7 py-4 text-sm font-bold text-[#061A2D] transition hover:bg-gray-100">
+          <a href="/acercade" className="group flex w-fit items-center gap-4 bg-white px-7 py-4 text-sm font-bold text-[#061A2D] transition hover:bg-gray-100">
             Quiero participar
             <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
           </a>

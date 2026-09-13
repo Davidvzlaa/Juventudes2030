@@ -128,7 +128,7 @@ export default function Header() {
                 <Link to="/" className={navLinkClass}>
                   Inicio <span className={underlineClass}></span>
                 </Link>
-                <a href="#acerca" className={navLinkClass}>
+                <a href="/acercade" className={navLinkClass}>
                   Acerca de <span className={underlineClass}></span>
                 </a>
                 <a href="/contacto" className={navLinkClass}>

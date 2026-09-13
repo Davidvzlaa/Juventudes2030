@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase'; // Ajusta esta ruta si tu cliente de Supabase está en otro directorio
 import { 
   Mail, MapPin, Phone, Globe, Send, MessageSquare, 
   Target, Leaf, Loader2, Link as LinkIcon 
 } from 'lucide-react';
 import { toast } from 'sonner';
+import Header from './Header';
+import Footer from './Footer';
 
 // ==========================================
-// INTERFACES (Alineadas con la BD)
+// INTERFACES (Alineadas con la base de datos)
 // ==========================================
 interface Sistema {
   nombre: string;
@@ -82,7 +84,7 @@ export default function Contacto() {
 
     try {
       // AQUÍ PUEDES INTEGRAR TU LÓGICA DE ENVÍO DE CORREO 
-      // (Ej. Insertar en tabla "mensajes_contacto", o usar EmailJS/Resend)
+      // (Ej. Insertar en tabla "mensajes_contacto", o usar una API como Resend/EmailJS)
       await new Promise(resolve => setTimeout(resolve, 1500)); 
       
       toast.success('Mensaje enviado con éxito', {
@@ -100,6 +102,8 @@ export default function Contacto() {
   };
 
   return (
+    <>
+    <Header/>
     <div className="space-y-8 max-w-7xl mx-auto pb-12 animate-in fade-in duration-500">
       
       {/* ==========================================
@@ -305,5 +309,7 @@ export default function Contacto() {
         </div>
       </div>
     </div>
-  );
+    <Footer />
+    </>
+    );
 }
