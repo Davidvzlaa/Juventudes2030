@@ -182,6 +182,9 @@ export default function AdminReportes() {
     finally { setProcesandoDeshabilitar(false); }
   };
 
+  // ==========================================
+  // CORRECCIÓN: FETCH DE ACTIVIDADES PARA ADMIN
+  // ==========================================
   const seleccionarReporte = async (reporte: any, forceRefresh = false) => {
     if (!forceRefresh && reporteSeleccionado?.id === reporte.id) {
       setReporteSeleccionado(null); 
@@ -192,8 +195,11 @@ export default function AdminReportes() {
     
     const strMes = String(reporte.mes).padStart(2, '0');
     const ultimoDia = new Date(reporte.anio, reporte.mes, 0).getDate();
-    
-    const { data: actividadesMes } = await supabase.from('actividades').select(`
+    const fechaInicio = `${reporte.anio}-${strMes}-01`;
+    const fechaFin = `${reporte.anio}-${strMes}-${ultimoDia}`;
+
+    // 1. Actividades CREADAS por el embajador en este mes
+    const { data: actsCreadas } = await supabase.from('actividades').select(`
         *, municipios(nombre),
         actividad_beneficiarios(categoria_id, hombres, mujeres, total),
         actividad_acciones(tipo_accion_id, cantidad),
@@ -202,15 +208,53 @@ export default function AdminReportes() {
         evidencias(id, url_archivo)
       `)
       .eq('creado_por_usuario_id', reporte.usuario_id)
-      .gte('fecha_evento', `${reporte.anio}-${strMes}-01`)
-      .lte('fecha_evento', `${reporte.anio}-${strMes}-${ultimoDia}`)
-      .order('fecha_evento', { ascending: true });
+      .gte('fecha_evento', fechaInicio)
+      .lte('fecha_evento', fechaFin)
+      .is('fecha_eliminacion', null);
 
-    if (!actividadesMes || actividadesMes.length === 0) {
+    // 2. Actividades a las que ASISTIÓ el embajador en este mes
+    const { data: actsUnidas } = await supabase.from('actividad_asistentes').select(`
+        actividad_id,
+        actividades (
+          *, municipios(nombre),
+          actividad_beneficiarios(categoria_id, hombres, mujeres, total),
+          actividad_acciones(tipo_accion_id, cantidad),
+          actividad_sostenibilidad(area_id),
+          actividad_ods(ods_id, es_principal, ods(numero, nombre)),
+          evidencias(id, url_archivo)
+        )
+      `)
+      .eq('usuario_id', reporte.usuario_id);
+
+    // 3. Unir y limpiar duplicados
+    const actividadesMap = new Map();
+
+    actsCreadas?.forEach((act: any) => {
+      actividadesMap.set(act.id, act);
+    });
+
+    actsUnidas?.forEach((item: any) => {
+      const act = Array.isArray(item.actividades) ? item.actividades[0] : item.actividades;
+      if (act && act.fecha_eliminacion === null) {
+        // Filtrar por fechas, ya que la tabla puente no filtra fechas en la query principal
+        if (act.fecha_evento >= fechaInicio && act.fecha_evento <= fechaFin) {
+          if (!actividadesMap.has(act.id)) {
+            actividadesMap.set(act.id, act);
+          }
+        }
+      }
+    });
+
+    const actividadesMes = Array.from(actividadesMap.values()).sort((a, b) => 
+      new Date(a.fecha_evento).getTime() - new Date(b.fecha_evento).getTime()
+    );
+
+    if (actividadesMes.length === 0) {
       setReporteSeleccionado({ ...reporte, actividades: [] });
       return;
     }
 
+    // Obtener los datos de validación (anulación) de la tabla puente del reporte
     const { data: repActs } = await supabase.from('reporte_act').select('actividad_id, estado_validacion, comentarios_admin').eq('reporte_id', reporte.id);
     const validacionMap = new Map();
     repActs?.forEach(ra => validacionMap.set(ra.actividad_id, { anulada: ra.estado_validacion === 'Rechazada', comentario: ra.comentarios_admin || '' }));
