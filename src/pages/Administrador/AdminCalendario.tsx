@@ -328,7 +328,7 @@ export default function AdminCalendario() {
             </select>
           </div>
 
-          <button onClick={() => navigate('/admin/actividades')} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#00689D] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#00527A] shadow-md transition-all">
+          <button onClick={() => navigate('/administrador/actividades')} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#00689D] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#00527A] shadow-md transition-all">
             <PlusCircle size={20} /> Crear Actividad
           </button>
         </div>
