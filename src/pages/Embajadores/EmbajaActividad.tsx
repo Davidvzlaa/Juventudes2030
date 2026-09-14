@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Save, Target, Globe, MapPin, FileText, List, Edit, Trash2, X, Archive, Plus, Filter } from 'lucide-react';
+import { Save, Target, Globe, MapPin, FileText, List, Edit, Trash2, X, Archive, Plus, Filter, AlertCircle, Ban } from 'lucide-react';
 import { toast } from 'sonner';
 
-// Importamos el AlertDialog de shadcn (Ajusta la ruta si es diferente en tu proyecto)
+// Importamos el AlertDialog de shadcn
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,7 +25,7 @@ interface ActividadList {
   lugar: string;
   estado: string;
   municipios: { nombre: string } | null;
-  es_creador?: boolean; // Bandera para saber si el embajador puede editar/eliminar
+  es_creador?: boolean; 
 }
 
 export default function EmbajadorActividades() {
@@ -43,7 +43,8 @@ export default function EmbajadorActividades() {
   const [filterFecha, setFilterFecha] = useState('Todos');
 
   // --- ESTADOS PARA LOS MODALES DE SHADCN ---
-  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
+  const [showCancelEventDialog, setShowCancelEventDialog] = useState(false);
   const [activityToDelete, setActivityToDelete] = useState<number | null>(null);
 
   const [formData, setFormData] = useState({
@@ -78,9 +79,6 @@ export default function EmbajadorActividades() {
     return `${Number(day)} de ${meses[Number(month) - 1]} del ${year}`;
   };
 
-  // =========================================================================
-  // CORRECCIÓN: FETCH DATA MEJORADO (Consulta Creadas + Asistidas)
-  // =========================================================================
   const fetchData = async () => {
     setLoading(true);
     
@@ -90,7 +88,6 @@ export default function EmbajadorActividades() {
 
       if (!userId) throw new Error("No hay usuario autenticado.");
 
-      // 1. Obtener actividades CREADAS por el embajador
       const { data: actsCreadas, error: errCreadas } = await supabase
         .from('actividades')
         .select('id, nombre, fecha_evento, lugar, estado, creado_por_usuario_id, municipios(nombre)')
@@ -99,7 +96,6 @@ export default function EmbajadorActividades() {
 
       if (errCreadas) throw errCreadas;
 
-      // 2. Obtener actividades a las que ASISTIÓ
       const { data: actsUnidas, error: errUnidas } = await supabase
         .from('actividad_asistentes')
         .select(`
@@ -112,49 +108,41 @@ export default function EmbajadorActividades() {
 
       if (errUnidas) throw errUnidas;
 
-      // 3. Procesar y combinar evitando duplicados
       const actividadesMap = new Map<number, ActividadList>();
 
-// Agregamos las creadas
       actsCreadas?.forEach(act => {
         actividadesMap.set(act.id, {
           id: act.id,
           nombre: act.nombre,
           fecha_evento: act.fecha_evento,
           lugar: act.lugar,
-          estado: act.estado,
-          // Extraemos el objeto si viene como arreglo
+          estado: act.estado || 'Programada',
           municipios: Array.isArray(act.municipios) ? act.municipios[0] : act.municipios,
-          es_creador: true // Bandera clave: Sí puede editarla
+          es_creador: true 
         });
       });
 
-      // Agregamos las asistidas (si no están ya en el Map y no están eliminadas)
       actsUnidas?.forEach(item => {
-        // Extraemos el objeto de la actividad por si viene como arreglo
         const act: any = Array.isArray(item.actividades) ? item.actividades[0] : item.actividades;
-
         if (act && act.fecha_eliminacion === null && !actividadesMap.has(act.id)) {
           actividadesMap.set(act.id, {
             id: act.id,
             nombre: act.nombre,
             fecha_evento: act.fecha_evento,
             lugar: act.lugar,
-            estado: act.estado,
-            // Extraemos el objeto del municipio si viene como arreglo
+            estado: act.estado || 'Programada',
             municipios: Array.isArray(act.municipios) ? act.municipios[0] : act.municipios,
             es_creador: act.creado_por_usuario_id === userId 
           });
         }
       });
-      // Convertimos el Map a Array y lo ordenamos por fecha descendente
+      
       const actividadesCombinadas = Array.from(actividadesMap.values()).sort((a, b) => {
         return new Date(b.fecha_evento).getTime() - new Date(a.fecha_evento).getTime();
       });
 
       setActividades(actividadesCombinadas);
 
-      // 4. Cargar catálogos
       const [resMun, resOds, resTipos] = await Promise.all([
         supabase.from('municipios').select('id, nombre').eq('activo', true).order('nombre'),
         supabase.from('ods').select('id, nombre, numero').eq('activo', true).order('numero', { ascending: true }),
@@ -187,7 +175,7 @@ export default function EmbajadorActividades() {
       if (error) throw error;
 
       const { data: ods } = await supabase.from('actividad_ods').select('ods_id').eq('actividad_id', id);
-      const { data: acciones } = await supabase.from('actividad_acciones').select('tipo_accion_id').eq('actividad_id', id).single();
+      const { data: acciones } = await supabase.from('actividad_acciones').select('tipo_accion_id').eq('actividad_id', id).maybeSingle();
 
       setFormData({
         nombre: act.nombre || '',
@@ -215,14 +203,14 @@ export default function EmbajadorActividades() {
     }
   };
 
-  // Prepara la eliminación abriendo el modal
   const handleDeleteClick = (id: number) => {
     setActivityToDelete(id);
   };
 
-  // Ejecuta la eliminación tras confirmar en el modal
+  // Función para Eliminar definitivamente
   const confirmDelete = async () => {
     if (!activityToDelete) return;
+    const toastId = toast.loading('Eliminando actividad...');
     try {
       const { data: authData } = await supabase.auth.getUser();
       const { error } = await supabase
@@ -234,13 +222,40 @@ export default function EmbajadorActividades() {
         .eq('id', activityToDelete);
         
       if (error) throw error;
-      toast.success('Actividad eliminada con éxito');
+      toast.success('Actividad eliminada permanentemente del registro.', { id: toastId });
       if (editingId === activityToDelete) resetForm();
       fetchData();
     } catch (error: any) {
-      toast.error('Error al eliminar: ' + error.message);
+      toast.error('Error al eliminar: ' + error.message, { id: toastId });
     } finally {
       setActivityToDelete(null);
+    }
+  };
+
+  // Función para Cancelar el estado de la actividad (suspender)
+  const confirmCancelEvent = async () => {
+    if (!editingId) return;
+    setIsSaving(true);
+    const toastId = toast.loading('Cancelando el evento...');
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from('actividades')
+        .update({ 
+           estado: 'Cancelada',
+           actualizado_por_usuario_id: authData.user?.id
+        })
+        .eq('id', editingId);
+        
+      if (error) throw error;
+      toast.success('El evento ha sido cancelado exitosamente.', { id: toastId });
+      resetForm();
+      fetchData();
+    } catch (error: any) {
+      toast.error('Error al cancelar el evento: ' + error.message, { id: toastId });
+    } finally {
+      setIsSaving(false);
+      setShowCancelEventDialog(false);
     }
   };
 
@@ -255,8 +270,8 @@ export default function EmbajadorActividades() {
     setShowForm(false); 
   };
 
-  // Verifica si el form tiene datos y decide si abre el modal o cierra directo
-  const handleCancelClick = () => {
+  // Verifica si hay datos antes de cerrar el form (para evitar pérdidas accidentales)
+  const handleDiscardClick = () => {
     const formTieneDatos = 
       formData.nombre.trim() !== '' ||
       formData.descripcion.trim() !== '' ||
@@ -274,13 +289,15 @@ export default function EmbajadorActividades() {
     if (!formTieneDatos) {
       resetForm();
     } else {
-      setShowCancelDialog(true);
+      setShowDiscardDialog(true);
     }
   };
 
+  // Función principal de Guardar (Crear, Actualizar o Borrador)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Identifica qué botón disparó el submit
     const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
     const estadoGuardar = submitter?.value ? submitter.value : formData.estado;
     
@@ -290,7 +307,7 @@ export default function EmbajadorActividades() {
     if (!formData.calle.trim() || !formData.colonia.trim()) return toast.warning("La calle y colonia son obligatorias.");
 
     setIsSaving(true);
-    const toastId = toast.loading(editingId ? 'Actualizando actividad...' : 'Guardando actividad...');
+    const toastId = toast.loading(editingId ? 'Procesando cambios...' : 'Guardando nueva actividad...');
 
     try {
       const { data: authData } = await supabase.auth.getUser();
@@ -329,7 +346,6 @@ export default function EmbajadorActividades() {
         if (errAct || !nuevaActividad) throw new Error("Error al crear: " + errAct?.message);
         actividadId = nuevaActividad.id;
         
-        // Registrar automáticamente al creador como asistente
         await supabase.from('actividad_asistentes').insert([{ actividad_id: actividadId, usuario_id: userId }]);
       }
 
@@ -349,8 +365,10 @@ export default function EmbajadorActividades() {
       resetForm();
       fetchData();
       
-      const mensaje = estadoGuardar === 'Borrador' ? 'guardada como borrador' : 'publicada';
-      toast.success(`¡Actividad ${mensaje} exitosamente!`, { id: toastId });
+      let mensajeSonner = 'publicada / actualizada';
+      if (estadoGuardar === 'Borrador') mensajeSonner = 'guardada como borrador';
+      
+      toast.success(`¡Actividad ${mensajeSonner}!`, { id: toastId });
 
     } catch (error: any) {
       toast.error(error.message, { id: toastId });
@@ -372,23 +390,23 @@ export default function EmbajadorActividades() {
       
       {/* ================= MODALES DE SHADCN ================= */}
 
-      {/* Modal para Cancelar Edición */}
-      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
-        <AlertDialogContent>
+      {/* 1. Modal para Descartar Cambios (Cerrar Form) */}
+      <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
+        <AlertDialogContent className="bg-white border border-gray-200 shadow-2xl rounded-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Estás seguro de cancelar?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Se perderá todo el progreso y los datos que no hayas guardado. Esta acción no se puede deshacer.
+            <AlertDialogTitle className="text-gray-900 font-black">¿Estás seguro de descartar los cambios?</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-600">
+              Se perderá todo el progreso y los datos que no hayas guardado en este formulario. Esta acción no se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Seguir editando</AlertDialogCancel>
+          <AlertDialogFooter className="mt-4">
+            <AlertDialogCancel className="bg-gray-100 border-none font-bold hover:bg-gray-200 text-gray-700">Seguir editando</AlertDialogCancel>
             <AlertDialogAction 
               onClick={() => {
                 resetForm();
-                setShowCancelDialog(false);
+                setShowDiscardDialog(false);
               }}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-red-600 hover:bg-red-700 text-white font-bold"
             >
               Sí, descartar cambios
             </AlertDialogAction>
@@ -396,22 +414,47 @@ export default function EmbajadorActividades() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Modal para Eliminar Actividad */}
+      {/* 2. Modal para Eliminar Actividad Permanentemente */}
       <AlertDialog open={activityToDelete !== null} onOpenChange={(isOpen) => !isOpen && setActivityToDelete(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="bg-white border border-gray-200 shadow-2xl rounded-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar esta actividad?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta acción removerá la actividad de tu lista de registros de forma permanente.
+            <AlertDialogTitle className="text-gray-900 font-black flex items-center gap-2">
+              <Trash2 className="text-red-500" size={20} /> ¿Eliminar esta actividad?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-600">
+              Esta acción removerá la actividad de tu lista de registros de forma permanente y eliminará a los embajadores unidos a ella. No podrás recuperarla.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setActivityToDelete(null)}>Cancelar</AlertDialogCancel>
+          <AlertDialogFooter className="mt-4">
+            <AlertDialogCancel onClick={() => setActivityToDelete(null)} className="bg-gray-100 border-none font-bold hover:bg-gray-200 text-gray-700">Conservar actividad</AlertDialogCancel>
             <AlertDialogAction 
               onClick={confirmDelete}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-red-600 hover:bg-red-700 text-white font-bold"
             >
-              Eliminar
+              Sí, eliminar permanentemente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 3. Modal para Cancelar Evento (Cambiar estado) */}
+      <AlertDialog open={showCancelEventDialog} onOpenChange={setShowCancelEventDialog}>
+        <AlertDialogContent className="bg-white border border-gray-200 shadow-2xl rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-gray-900 font-black flex items-center gap-2">
+              <Ban className="text-red-500" size={20} /> ¿Cancelar el evento?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-600">
+              La actividad seguirá apareciendo en tu historial, pero cambiará su estado a <strong className="text-red-600">Cancelada</strong>. Los embajadores ya no podrán verla en su feed principal.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4">
+            <AlertDialogCancel className="bg-gray-100 border-none font-bold hover:bg-gray-200 text-gray-700">No, mantener evento</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmCancelEvent}
+              className="bg-red-600 hover:bg-red-700 text-white font-bold"
+            >
+              Sí, cancelar evento
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -450,13 +493,14 @@ export default function EmbajadorActividades() {
                 <Filter size={14}/> Estado
               </label>
               <select 
-                className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D] bg-white"
+                className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D] bg-white text-sm font-medium"
                 value={filterEstado}
                 onChange={(e) => setFilterEstado(e.target.value)}
               >
-                <option value="Todos">Todos</option>
-                <option value="Programada">Publicados</option>
+                <option value="Todos">Todos los estados</option>
+                <option value="Programada">Programadas / Activas</option>
                 <option value="Borrador">Borradores</option>
+                <option value="Cancelada">Canceladas</option>
               </select>
             </div>
             <div className="flex-1 w-full">
@@ -464,7 +508,7 @@ export default function EmbajadorActividades() {
                 <Filter size={14}/> Fechas
               </label>
               <select 
-                className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D] bg-white"
+                className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#00689D] bg-white text-sm font-medium"
                 value={filterFecha}
                 onChange={(e) => setFilterFecha(e.target.value)}
               >
@@ -521,9 +565,11 @@ export default function EmbajadorActividades() {
                           <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
                             a.estado === 'Borrador' 
                               ? 'bg-yellow-50 text-yellow-700 border-yellow-200' 
-                              : 'bg-green-50 text-green-700 border-green-200'
+                              : a.estado === 'Cancelada'
+                                ? 'bg-red-50 text-red-700 border-red-200'
+                                : 'bg-green-50 text-green-700 border-green-200'
                           }`}>
-                            {a.estado === 'Borrador' ? 'Borrador' : 'Publicada'}
+                            {a.estado === 'Borrador' ? 'Borrador' : a.estado === 'Cancelada' ? 'Cancelada' : 'Programada'}
                           </span>
                         </td>
                         <td className="p-4 text-gray-600">{formatearFecha(a.fecha_evento)}</td>
@@ -553,7 +599,9 @@ export default function EmbajadorActividades() {
                               </button>
                             </>
                           ) : (
-                            <span className="text-[11px] text-gray-400 italic px-2 py-1">Solo lectura</span>
+                            <span className="text-[11px] text-gray-400 italic px-2 py-1 flex items-center gap-1">
+                              {a.estado === 'Cancelada' ? <AlertCircle size={12}/> : null} Solo lectura
+                            </span>
                           )}
                         </td>
                       </tr>
@@ -579,9 +627,9 @@ export default function EmbajadorActividades() {
             </div>
             <button 
               type="button"
-              onClick={handleCancelClick}
+              onClick={handleDiscardClick}
               className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
-              title="Cerrar"
+              title="Cerrar Formulario"
             >
               <X size={24} />
             </button>
@@ -670,38 +718,62 @@ export default function EmbajadorActividades() {
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row justify-end gap-3 pt-6 border-t border-gray-100">
+            {/* BARRA DE BOTONES DE ACCIÓN (Flex Wrap para que se acomoden bien en móviles) */}
+            <div className="flex flex-wrap items-center justify-end gap-3 pt-6 border-t border-gray-100">
+              
+              {/* Botón: Cerrar Formulario / Descartar Cambios (NO ELIMINA NI CANCELA EN BD) */}
               <button 
                 type="button" 
-                onClick={handleCancelClick}
+                onClick={handleDiscardClick}
                 disabled={isSaving}
-                className="w-full sm:w-auto px-6 py-3 font-bold text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 border border-gray-200 shadow-sm transition-all disabled:opacity-50"
+                className="w-full sm:w-auto px-6 py-3 font-bold text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 border border-gray-200 shadow-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                <X size={18} className="inline mr-1" /> Cancelar
+                <X size={18} /> Cancelar edición
               </button>
 
+              {/* Botón: Cancelar Actividad (Desencadena el Modal en vez de hacer submit) */}
+              {editingId && formData.estado !== 'Cancelada' && (
+                <button 
+                  type="button"
+                  onClick={() => setShowCancelEventDialog(true)}
+                  disabled={isSaving} 
+                  className="w-full sm:w-auto px-6 py-3 font-bold text-red-700 bg-red-50 border border-red-200 rounded-xl hover:bg-red-100 shadow-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <Ban size={18} /> Cancelar Evento
+                </button>
+              )}
+
+              {/* Botón: Guardar Borrador (Solo para nuevas o las que ya son borrador) */}
               {(!editingId || formData.estado === 'Borrador') && (
                 <button 
                   type="submit" 
                   name="accionBoton" 
                   value="Borrador" 
                   disabled={isSaving} 
-                  className="w-full sm:w-auto px-6 py-3 font-bold text-[#00689D] bg-blue-50 border border-[#00689D] rounded-xl hover:bg-blue-100 shadow-sm transition-all disabled:opacity-50"
+                  className="w-full sm:w-auto px-6 py-3 font-bold text-[#00689D] bg-blue-50 border border-[#00689D] rounded-xl hover:bg-blue-100 shadow-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  <Archive size={18} className="inline mr-1" /> Guardar Borrador
+                  <Archive size={18} /> Guardar Borrador
                 </button>
               )}
 
+              {/* Botón: Publicar / Actualizar */}
               <button 
                 type="submit"
                 name="accionBoton" 
                 value="Programada" 
                 disabled={isSaving} 
-                className="w-full sm:w-auto px-8 py-3 font-bold text-white bg-[#00689D] rounded-xl hover:bg-[#00527A] shadow-md transition-all disabled:opacity-50"
+                className="w-full sm:w-auto px-8 py-3 font-bold text-white bg-[#00689D] rounded-xl hover:bg-[#00527A] shadow-md transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                <Save size={18} className="inline mr-1" /> 
-                {editingId ? (formData.estado === 'Borrador' ? 'Publicar Borrador' : 'Actualizar Actividad') : 'Publicar Actividad'}
+                <Save size={18} /> 
+                {editingId 
+                  ? (formData.estado === 'Borrador' 
+                      ? 'Publicar Borrador' 
+                      : formData.estado === 'Cancelada' 
+                          ? 'Publicar Actividad' 
+                          : 'Actualizar Actividad') 
+                  : 'Publicar Actividad'}
               </button>
+
             </div>
           </form>
         </div>
