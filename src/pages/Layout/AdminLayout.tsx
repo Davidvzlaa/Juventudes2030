@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import Header from '../Header';
 import { 
   Menu, X, MapPin, Users, Target, Folder, 
-  Activity, UserPlus, ShieldCheck, LogOut, Settings, Globe 
+  Activity, UserPlus, ShieldCheck, Settings, Globe 
 } from 'lucide-react';
 
 const catalogos = [
@@ -19,14 +19,14 @@ const catalogos = [
 ];
 
 export default function AdminLayout() {
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
   const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate('/');
-  };
+  // const handleLogout = async () => {
+  //   await supabase.auth.signOut();
+  //   navigate('/');
+  // };
 
   return (
     // CAMBIO CLAVE 1: h-screen (altura exacta) y overflow-hidden para bloquear el scroll de toda la ventana
