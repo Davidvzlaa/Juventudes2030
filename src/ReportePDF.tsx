@@ -256,12 +256,12 @@ export default function ReportePDF({ snapshot, categorias = [], acciones = [] }:
                 <Text style={styles.portadaInfoValue}>{snapshot.nombre_mes?.toUpperCase()}</Text>
               </View>
               <View style={styles.portadaInfoCell}>
-                <Text style={styles.portadaInfoLabel}>Municipio de Operación</Text>
+                <Text style={styles.portadaInfoLabel}>Municipio</Text>
                 <Text style={styles.portadaInfoValue}>{snapshot.municipio_nombre?.toUpperCase()}</Text>
               </View>
               <View style={styles.portadaInfoCell}>
                 <Text style={styles.portadaInfoLabel}>Estatus del Expediente</Text>
-                <Text style={styles.portadaInfoValue}>AUDITADO / ENTREGADO</Text>
+                <Text style={styles.portadaInfoValue}>ENTREGADO</Text>
               </View>
             </View>
           </View>
@@ -293,7 +293,7 @@ export default function ReportePDF({ snapshot, categorias = [], acciones = [] }:
                 <View style={styles.portadaMetricasRow}>
                   <View style={styles.portadaMetricaCaja}>
                     <Text style={styles.portadaMetricaNumero}>{totalActividades}</Text>
-                    <Text style={styles.portadaMetricaTexto}>Actividades{'\n'}Validadas</Text>
+                    <Text style={styles.portadaMetricaTexto}>Actividades{'\n'}Realizadas</Text>
                   </View>
                   <View style={styles.portadaMetricaCaja}>
                     <Text style={styles.portadaMetricaNumero}>{creadas}</Text>
