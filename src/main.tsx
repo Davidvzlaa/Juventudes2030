@@ -79,7 +79,7 @@ export default function App() {
             </Route>
 
             {/* Redirecciones de utilidad */}
-            <Route path="/administrador/catalogos" element={<Navigate to="/administrador/configuracion/municipios" replace />} />
+            <Route path="/administrador/catalogos" element={<Navigate to="/administrador/configuracion/roles" replace />} />
             <Route path="/admin/*" element={<Navigate to="/administrador" replace />} />
           </Route>
 
