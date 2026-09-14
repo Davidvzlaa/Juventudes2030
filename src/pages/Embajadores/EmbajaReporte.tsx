@@ -1,9 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Calendar, FileText, Send, AlertCircle, Clock, CheckCircle2, 
-  Plus, X, Save, UploadCloud, Edit2, Loader2, Info, Globe
+  Plus, X, Save, UploadCloud, Edit2, Loader2, Info, Globe, Users
 } from 'lucide-react';
 import { toast } from 'sonner';
+
+// Importamos el AlertDialog de shadcn
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { supabase } from '../../lib/supabase'; 
 
@@ -11,7 +23,6 @@ type EstadoReporte = 'Sin empezar' | 'Borrador' | 'Enviado' | 'Regresado';
 
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-// Función auxiliar para emitir la notificación con sonido y posición inferior derecha
 const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
   const audio = new Audio('/notification.mp3');
   audio.volume = 0.5;
@@ -20,17 +31,10 @@ const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | '
   const options = { position: 'bottom-right' as const };
 
   switch (type) {
-    case 'success':
-      toast.success(message, options);
-      break;
-    case 'error':
-      toast.error(message, options);
-      break;
-    case 'warning':
-      toast.warning(message, options);
-      break;
-    default:
-      toast.info(message, options);
+    case 'success': toast.success(message, options); break;
+    case 'error': toast.error(message, options); break;
+    case 'warning': toast.warning(message, options); break;
+    default: toast.info(message, options);
   }
 };
 
@@ -44,64 +48,63 @@ export default function EmbajaReporte() {
   // ESTADO DE EDICIÓN
   const [actividadEnEdicion, setActividadEnEdicion] = useState<any>(null);
   const [guardando, setGuardando] = useState(false);
+  const [isSending, setIsSending] = useState(false);
 
   // CATÁLOGOS DE BD
   const [categoriasDB, setCategoriasDB] = useState<any[]>([]);
   const [accionesDB, setAccionesDB] = useState<any[]>([]);
   const [odsDB, setOdsDB] = useState<any[]>([]); 
   const [municipiosDB, setMunicipiosDB] = useState<any[]>([]);
+  const [embajadoresLocal, setEmbajadoresLocal] = useState<any[]>([]);
+
+  // MODALES
+  const [showSendDialog, setShowSendDialog] = useState(false);
+  const [evidenciaToDelete, setEvidenciaToDelete] = useState<number | null>(null); // NUEVO ESTADO PARA EL MODAL DE EVIDENCIA
 
   // ==========================================
-  // FETCH INICIAL: Catálogos y Reportes
+  // FETCH INICIAL
   // ==========================================
-  useEffect(() => {
-    const fetchDatos = async () => {
-      try {
-        const { data: authData } = await supabase.auth.getUser();
-        const userId = authData.user?.id;
+  const fetchDatos = async () => {
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData.user?.id;
 
-        if (!userId) return;
-        setCurrentUserId(userId);
+      if (!userId) return;
+      setCurrentUserId(userId);
 
-        const { data: categorias } = await supabase.from('categorias_beneficiarios').select('id, nombre').eq('activo', true).order('id');
-        if (categorias) setCategoriasDB([...categorias, { id: 99, nombre: 'Total Beneficiarios' }]);
+      const [resCat, resAcc, resOds, resMun, resRep] = await Promise.all([
+        supabase.from('categorias_beneficiarios').select('id, nombre').eq('activo', true).order('id'),
+        supabase.from('tipos_accion').select('id, nombre').eq('activo', true).order('id'),
+        supabase.from('ods').select('id, numero, nombre, categoria_sostenibilidad').eq('activo', true).order('numero'),
+        supabase.from('municipios').select('id, nombre').eq('activo', true).order('nombre'),
+        supabase.from('reportes').select('id, mes, anio, estado, periodo_inicio, periodo_fin').eq('usuario_id', userId).order('periodo_inicio', { ascending: false })
+      ]);
 
-        const { data: acciones } = await supabase.from('tipos_accion').select('id, nombre').eq('activo', true).order('id');
-        if (acciones) setAccionesDB(acciones);
+      if (resCat.data) setCategoriasDB([...resCat.data, { id: 99, nombre: 'Total Beneficiarios' }]);
+      if (resAcc.data) setAccionesDB(resAcc.data);
+      if (resOds.data) setOdsDB(resOds.data);
+      if (resMun.data) setMunicipiosDB(resMun.data);
 
-        const { data: odsData } = await supabase.from('ods').select('id, numero, nombre, categoria_sostenibilidad').eq('activo', true).order('numero');
-        if (odsData) setOdsDB(odsData);
-
-        const { data: munData } = await supabase.from('municipios').select('id, nombre').eq('activo', true).order('nombre');
-        if (munData) setMunicipiosDB(munData);
-
-        // Traer Reportes del Usuario
-        const { data: misReportes } = await supabase
-          .from('reportes')
-          .select('id, mes, anio, estado, periodo_inicio, periodo_fin')
-          .eq('usuario_id', userId)
-          .order('periodo_inicio', { ascending: false });
-
-        if (misReportes) {
-          const formateados = misReportes.map(r => ({
-            ...r,
-            nombre_mes: `${MESES[(r.mes || 1) - 1]} ${r.anio}`
-          }));
-          setReportes(formateados);
-        }
-      } catch (error) {
-        console.error("Error cargando datos de Supabase:", error);
+      if (resRep.data) {
+        const formateados = resRep.data.map(r => ({
+          ...r,
+          nombre_mes: `${MESES[(r.mes || 1) - 1]} ${r.anio}`
+        }));
+        setReportes(formateados);
       }
-    };
-    fetchDatos();
-  }, []);
+    } catch (error) {
+      console.error("Error cargando datos:", error);
+    }
+  };
+
+  useEffect(() => { fetchDatos(); }, []);
 
   // ==========================================
-  // CARGAR ACTIVIDADES DEL REPORTE SELECCIONADO (Creadas y Unidas)
+  // CARGAR ACTIVIDADES DEL REPORTE
   // ==========================================
   const seleccionarReporte = async (reporte: any) => {
     setReporteSeleccionado(reporte);
-    setActividades([]); // Limpiamos la vista mientras carga
+    setActividades([]); 
 
     try {
       if (!currentUserId) return;
@@ -111,7 +114,6 @@ export default function EmbajaReporte() {
       const ultimoDia = new Date(reporte.anio, reporte.mes, 0).getDate(); 
       const fechaFin = reporte.periodo_fin || `${reporte.anio}-${mesStr}-${ultimoDia}`;
 
-      // 1. Traer actividades CREADAS por el usuario en el rango del mes
       const { data: actividadesCreadas, error: errAct } = await supabase
         .from('actividades')
         .select(`
@@ -130,7 +132,6 @@ export default function EmbajaReporte() {
 
       if (errAct) throw errAct;
 
-      // 2. Traer actividades a las que SE UNIÓ en el rango del mes
       const { data: actividadesUnidas, error: errUnidas } = await supabase
         .from('actividad_asistentes')
         .select(`
@@ -149,20 +150,19 @@ export default function EmbajaReporte() {
 
       if (errUnidas) throw errUnidas;
 
-      // 3. Unir y quitar duplicados usando un Map
       const actividadesMap = new Map();
 
-      // Procesar creadas
+      // Procesar creadas (DESCARTANDO CANCELADAS)
       actividadesCreadas?.forEach((act: any) => {
-        actividadesMap.set(act.id, { ...act, es_propia: true });
+        if (act.estado !== 'Cancelada') {
+          actividadesMap.set(act.id, { ...act, es_propia: true });
+        }
       });
 
-      // Procesar unidas (Filtrando por fechas, ya que la tabla puente no filtra fechas directo)
+      // Procesar unidas (DESCARTANDO CANCELADAS Y FUERA DE FECHA)
       actividadesUnidas?.forEach((item: any) => {
         const act: any = Array.isArray(item.actividades) ? item.actividades[0] : item.actividades;
-        
-        if (act && act.fecha_eliminacion === null) {
-          // Verificar que esté dentro del mes del reporte
+        if (act && act.fecha_eliminacion === null && act.estado !== 'Cancelada') {
           if (act.fecha_evento >= fechaInicio && act.fecha_evento <= fechaFin) {
             if (!actividadesMap.has(act.id)) {
               actividadesMap.set(act.id, { 
@@ -174,10 +174,11 @@ export default function EmbajaReporte() {
         }
       });
 
-      // 4. Formatear la data combinada para el formulario
-      const actividadesCompletas = Array.from(actividadesMap.values())
-        .sort((a, b) => new Date(a.fecha_evento).getTime() - new Date(b.fecha_evento).getTime())
-        .map((act: any) => {
+      // Formatear la data combinada para el formulario y FIRMAR URLs
+      const arrayActividades = Array.from(actividadesMap.values())
+        .sort((a, b) => new Date(a.fecha_evento).getTime() - new Date(b.fecha_evento).getTime());
+
+      const actividadesCompletas = await Promise.all(arrayActividades.map(async (act: any) => {
           let beneficiariosObj: any = {};
           act.actividad_beneficiarios?.forEach((b: any) => {
             beneficiariosObj[b.categoria_id] = { hombres: b.hombres?.toString(), mujeres: b.mujeres?.toString(), total: b.total?.toString() };
@@ -191,12 +192,23 @@ export default function EmbajaReporte() {
             odsSeleccionados.push(...secundarios.map((o:any) => o.ods_id));
           }
 
-          // Identificar tipo de acción
           let tipo_actividad_nombre = '';
           if (act.actividad_acciones && act.actividad_acciones.length > 0) {
              const accionRel = act.actividad_acciones[0];
              const accionCat = accionesDB.find(a => a.id === accionRel.tipo_accion_id);
              if (accionCat) tipo_actividad_nombre = accionCat.nombre;
+          }
+
+          let evidenciasConUrlTemporal = [];
+          if (act.evidencias && act.evidencias.length > 0) {
+            evidenciasConUrlTemporal = await Promise.all(act.evidencias.map(async (ev: any) => {
+              const { data } = await supabase.storage.from('evidencias').createSignedUrl(ev.url_archivo, 3600);
+              return { 
+                id: ev.id, 
+                url: data?.signedUrl || '', 
+                path_interno: ev.url_archivo 
+              };
+            }));
           }
 
           return {
@@ -206,29 +218,59 @@ export default function EmbajaReporte() {
             domicilio: { calle: act.calle || '', colonia: act.colonia || '', municipio: act.municipio_id || '' },
             beneficiarios: beneficiariosObj,
             ods_seleccionados: odsSeleccionados,
-            evidencias: act.evidencias ? act.evidencias.map((ev:any) => ({ id: ev.id, url: ev.url_archivo })) : []
+            evidencias: evidenciasConUrlTemporal,
+            es_colaborativa: false, 
+            colaborador_id: ''
           };
-      });
+      }));
 
       setActividades(actividadesCompletas);
     } catch (error) {
-      console.error("Error cargando actividades del mes:", error);
       toast.error("Error al cargar las actividades del reporte.");
     }
   };
 
   // ==========================================
-  // HANDLERS DEL FORMULARIO
+  // CARGAR EMBAJADORES SI ES COLABORATIVA
+  // ==========================================
+  useEffect(() => {
+    const cargarEmbajadores = async () => {
+      const municipioId = actividadEnEdicion?.domicilio?.municipio;
+      if (actividadEnEdicion?.es_colaborativa && municipioId) {
+        const { data } = await supabase
+          .from('embajadores')
+          .select('usuario_id, usuarios(nombre, apellido)')
+          .eq('municipio_id', municipioId);
+        
+        if (data) {
+          setEmbajadoresLocal(data.filter(e => e.usuario_id !== currentUserId));
+        }
+      } else {
+        setEmbajadoresLocal([]);
+      }
+    };
+    cargarEmbajadores();
+  }, [actividadEnEdicion?.es_colaborativa, actividadEnEdicion?.domicilio?.municipio, currentUserId]);
+
+  // ==========================================
+  // HANDLERS
   // ==========================================
   const handleChangeSimple = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setActividadEnEdicion({ ...actividadEnEdicion, [name]: value });
+    const { name, value, type } = e.target;
+    if (type === 'checkbox') {
+      const checked = (e.target as HTMLInputElement).checked;
+      setActividadEnEdicion({ ...actividadEnEdicion, [name]: checked });
+    } else {
+      setActividadEnEdicion({ ...actividadEnEdicion, [name]: value });
+    }
   };
 
   const handleDomicilioChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setActividadEnEdicion((prev: any) => ({
-      ...prev, domicilio: { ...prev.domicilio, [name]: name === 'municipio' ? Number(value) : value }
+      ...prev, 
+      domicilio: { ...prev.domicilio, [name]: name === 'municipio' ? Number(value) : value },
+      ...(name === 'municipio' ? { colaborador_id: '' } : {})
     }));
   };
 
@@ -249,14 +291,7 @@ export default function EmbajaReporte() {
     setActividadEnEdicion((prev: any) => {
       const prevBenef = prev.beneficiarios?.[categoriaId] || {};
       const updatedBenef = { ...prevBenef, [campo]: value };
-      
-      return {
-        ...prev,
-        beneficiarios: {
-          ...prev.beneficiarios,
-          [categoriaId]: updatedBenef
-        }
-      };
+      return { ...prev, beneficiarios: { ...prev.beneficiarios, [categoriaId]: updatedBenef } };
     });
   };
 
@@ -275,25 +310,70 @@ export default function EmbajaReporte() {
     });
   };
 
-  const eliminarEvidencia = (idEliminar: number) => {
+  // NUEVA LÓGICA DE ELIMINAR EVIDENCIA (CON MODAL)
+  const confirmEliminarEvidencia = async () => {
+    if (evidenciaToDelete === null) return;
+    const idEliminar = evidenciaToDelete;
+    const evEliminar = actividadEnEdicion.evidencias.find((ev: any) => ev.id === idEliminar);
+    
+    // Si no tiene "file", significa que viene de la BD (ya estaba guardada)
+    if (evEliminar && !evEliminar.file) {
+      const toastId = toast.loading('Eliminando evidencia...');
+      try {
+        // 1. Borrar archivo físico del bucket usando el path_interno
+        if (evEliminar.path_interno) {
+          const { error: storageError } = await supabase.storage.from('evidencias').remove([evEliminar.path_interno]);
+          if (storageError) console.error("No se pudo borrar del storage:", storageError);
+        }
+
+        // 2. Borrar de la base de datos SQL
+        const { error: dbError } = await supabase.from('evidencias').delete().eq('id', idEliminar);
+        if (dbError) throw dbError;
+        
+        toast.success('Evidencia eliminada', { id: toastId });
+      } catch (error: any) {
+        setEvidenciaToDelete(null); // Cerramos el modal en caso de error
+        return toast.error('Error al eliminar: ' + error.message, { id: toastId });
+      }
+    }
+
+    // Quitarla de la pantalla inmediatamente (haya sido de la BD o local)
     setActividadEnEdicion((prev: any) => ({
       ...prev, evidencias: prev.evidencias.filter((ev: any) => ev.id !== idEliminar)
     }));
+    
+    setEvidenciaToDelete(null); // Cerramos el modal
   };
 
   // ==========================================
-  // GUARDAR EN BASE DE DATOS
+  // GUARDAR EDICIÓN
   // ==========================================
   const guardarEdicionActividad = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reporteSeleccionado || !actividadEnEdicion || !currentUserId) return;
+
+    let totalBeneficiariosSum = 0;
+    if (actividadEnEdicion.beneficiarios) {
+      Object.entries(actividadEnEdicion.beneficiarios).forEach(([catIdStr, val]: [string, any]) => {
+        if (Number(catIdStr) !== 99) {
+          totalBeneficiariosSum += parseInt(val.hombres || '0', 10) + parseInt(val.mujeres || '0', 10);
+        }
+      });
+    }
+
+    if (totalBeneficiariosSum === 0) {
+      return notifyWithSound('Debes registrar al menos una persona beneficiada en los recuadros.', 'warning');
+    }
+
+    if (actividadEnEdicion.es_colaborativa && !actividadEnEdicion.colaborador_id) {
+      return notifyWithSound('Selecciona el embajador colaborador de la lista.', 'warning');
+    }
 
     setGuardando(true);
     try {
       let actId = actividadEnEdicion.id;
       const esNueva = String(actId).startsWith('act-');
 
-      // SI LA ACTIVIDAD ES PROPIA O ES NUEVA, GUARDAMOS TODO EL FORMULARIO
       if (actividadEnEdicion.es_propia) {
         
         const actividadData = {
@@ -308,7 +388,7 @@ export default function EmbajaReporte() {
           rango_edad_beneficiarios: actividadEnEdicion.rango_edad,
           descripcion: actividadEnEdicion.descripcion,
           creado_por_usuario_id: currentUserId,
-          estado: 'Borrador',
+          estado: 'Programada', 
           fecha_actualizacion: new Date().toISOString()
         };
 
@@ -316,21 +396,35 @@ export default function EmbajaReporte() {
           const { data: insertada, error: errIns } = await supabase.from('actividades').insert({ 
             ...actividadData, 
             fecha_creacion: new Date().toISOString(), 
-            beneficiarios_directos: 0, 
+            beneficiarios_directos: totalBeneficiariosSum, 
             beneficiarios_indirectos: 0 
           }).select('id').single();
           
           if (errIns) throw errIns;
           actId = insertada.id;
 
-          // Lo registramos como participante de su propia actividad nueva
           await supabase.from('actividad_asistentes').insert([{ actividad_id: actId, usuario_id: currentUserId }]);
+          
+          if (actividadEnEdicion.es_colaborativa && actividadEnEdicion.colaborador_id) {
+             await supabase.from('actividad_asistentes').insert([{ actividad_id: actId, usuario_id: actividadEnEdicion.colaborador_id }]);
+          }
+
         } else {
-          const { error: errAct } = await supabase.from('actividades').update(actividadData).eq('id', actId);
+          const { error: errAct } = await supabase.from('actividades').update({
+            ...actividadData,
+            beneficiarios_directos: totalBeneficiariosSum
+          }).eq('id', actId);
           if (errAct) throw errAct;
+
+          if (actividadEnEdicion.es_colaborativa && actividadEnEdicion.colaborador_id) {
+            await supabase.from('actividad_asistentes').upsert(
+              { actividad_id: actId, usuario_id: actividadEnEdicion.colaborador_id }, 
+              { onConflict: 'actividad_id,usuario_id' }
+            );
+          }
         }
 
-        // 2. Beneficiarios (Ignorando la fila 99)
+        // Beneficiarios
         if (actividadEnEdicion.beneficiarios) {
           for (const [catIdStr, valores] of Object.entries(actividadEnEdicion.beneficiarios)) {
             const catId = Number(catIdStr);
@@ -348,7 +442,7 @@ export default function EmbajaReporte() {
           }
         }
 
-        // 3. Acción (Automática basada en el select)
+        // Acción
         await supabase.from('actividad_acciones').delete().eq('actividad_id', actId);
         if (actividadEnEdicion.tipo_actividad) {
           const tipoObj = accionesDB.find(a => a.nombre === actividadEnEdicion.tipo_actividad);
@@ -359,12 +453,11 @@ export default function EmbajaReporte() {
           }
         }
 
-        // 4. Sostenibilidad (Automática basada en ODS)
+        // Sostenibilidad & ODS
         const areasSeleccionadas = new Set<number>();
         actividadEnEdicion.ods_seleccionados?.forEach((odsId: number) => {
           const odsObj = odsDB.find(o => o.id === odsId);
           if (!odsObj || !odsObj.categoria_sostenibilidad) return;
-          
           const cat = odsObj.categoria_sostenibilidad.toLowerCase();
           if (cat.includes('econ')) areasSeleccionadas.add(1);
           if (cat.includes('social') || cat.includes('sociedad')) areasSeleccionadas.add(2);
@@ -379,27 +472,52 @@ export default function EmbajaReporte() {
           await supabase.from('actividad_sostenibilidad').insert({ actividad_id: actId, area_id: areaId, creado_en: new Date().toISOString() });
         }
 
-        // 5. ODS 
         await supabase.from('actividad_ods').delete().eq('actividad_id', actId);
         if (actividadEnEdicion.ods_seleccionados && actividadEnEdicion.ods_seleccionados.length > 0) {
           const odsPayload = actividadEnEdicion.ods_seleccionados.map((odsId: number, idx: number) => ({
-            actividad_id: actId,
-            ods_id: odsId,
-            es_principal: idx === 0 
+            actividad_id: actId, ods_id: odsId, es_principal: idx === 0 
           }));
           await supabase.from('actividad_ods').insert(odsPayload);
         }
       }
 
-      // 6. Vincular al reporte
       await supabase.from('reporte_act').upsert({
         reporte_id: reporteSeleccionado.id, actividad_id: actId,
         estado_validacion: 'Pendiente', fecha_agregado: new Date().toISOString()
       }, { onConflict: 'reporte_id,actividad_id' });
 
-      // LÓGICA DE EVIDENCIAS IRÍA AQUÍ (Storage de Supabase, lo dejo preparado para tu backend)
+      // LÓGICA DE EVIDENCIAS (STORAGE PRIVADO + BD)
+      if (actividadEnEdicion.evidencias && actividadEnEdicion.evidencias.length > 0) {
+        for (const ev of actividadEnEdicion.evidencias) {
+          
+          if (ev.file) {
+            const fileExt = ev.file.name.split('.').pop();
+            const fileName = `${actId}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+            const filePath = `${currentUserId}/${fileName}`; 
 
-      notifyWithSound('Actividad guardada exitosamente', 'success');
+            const { error: uploadError } = await supabase.storage
+              .from('evidencias') 
+              .upload(filePath, ev.file);
+
+            if (uploadError) {
+              console.error("Error subiendo a Storage:", uploadError);
+              throw new Error("No se pudo subir una de las imágenes al Storage.");
+            }
+
+            const { error: dbError } = await supabase.from('evidencias').insert({
+              actividad_id: actId,
+              url_archivo: filePath,
+              usuario_id: currentUserId
+            });
+
+            if (dbError) {
+              console.error("Error guardando registro en SQL evidencias:", dbError);
+              throw new Error(`Error en la tabla evidencias: ${dbError.message}`);
+            }
+          }
+        }
+      }
+      notifyWithSound('Actividad anexada al reporte exitosamente', 'success');
       setActividadEnEdicion(null);
       seleccionarReporte(reporteSeleccionado);
       
@@ -421,8 +539,30 @@ export default function EmbajaReporte() {
       hora_inicio: '', hora_fin: '',
       ods_seleccionados: [], 
       lugar: '', domicilio: { municipio: '', colonia: '', calle: '' },
-      beneficiarios: {}, rango_edad: '', descripcion: '', evidencias: []
+      beneficiarios: {}, rango_edad: '', descripcion: '', evidencias: [],
+      es_colaborativa: false, colaborador_id: ''
     });
+  };
+
+  // ==========================================
+  // ENVIAR REPORTE MENSUAL
+  // ==========================================
+  const handleEnviarReporte = async () => {
+    if (!reporteSeleccionado) return;
+    setIsSending(true);
+    try {
+      const { error } = await supabase.from('reportes').update({ estado: 'Enviado' }).eq('id', reporteSeleccionado.id);
+      if (error) throw error;
+      
+      toast.success('¡Reporte enviado exitosamente!');
+      setShowSendDialog(false);
+      setReporteSeleccionado({ ...reporteSeleccionado, estado: 'Enviado' });
+      fetchDatos(); 
+    } catch (error: any) {
+      toast.error('Error al enviar el reporte: ' + error.message);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const getBadgeEstado = (estado: EstadoReporte) => {
@@ -439,8 +579,56 @@ export default function EmbajaReporte() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-100px)] relative">
-      
-      {/* ================= MODAL DE EDICIÓN ================= */}
+
+      {/* ================= MODAL ENVIAR REPORTE ================= */}
+      <AlertDialog open={showSendDialog} onOpenChange={setShowSendDialog}>
+        <AlertDialogContent className="bg-white border border-gray-200 shadow-2xl rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-gray-900 font-black flex items-center gap-2">
+              <Send className="text-[#00689D]" size={20} /> ¿Enviar reporte definitivo?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-600">
+              Estás a punto de enviar tu reporte mensual. Una vez enviado, <strong>no podrás modificar ni agregar</strong> más actividades a este mes a menos que el comité te lo regrese para correcciones.
+              ¿Revisaste que todas tus evidencias y beneficiarios estén correctos?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4">
+            <AlertDialogCancel disabled={isSending} className="bg-gray-100 border-none font-bold hover:bg-gray-200 text-gray-700">Revisar de nuevo</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleEnviarReporte}
+              disabled={isSending}
+              className="bg-[#00689D] hover:bg-[#00527A] text-white font-bold"
+            >
+              {isSending ? 'Enviando...' : 'Sí, enviar reporte'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ================= MODAL ELIMINAR EVIDENCIA ================= */}
+      <AlertDialog open={evidenciaToDelete !== null} onOpenChange={(isOpen) => !isOpen && setEvidenciaToDelete(null)}>
+        <AlertDialogContent className="bg-white border border-gray-200 shadow-2xl rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-gray-900 font-black flex items-center gap-2">
+              <AlertCircle className="text-red-500" size={20} /> ¿Eliminar esta evidencia?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-600">
+              ¿Estás seguro de que deseas eliminar esta fotografía permanentemente? Esta acción la borrará de la base de datos y no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4">
+            <AlertDialogCancel onClick={() => setEvidenciaToDelete(null)} className="bg-gray-100 border-none font-bold hover:bg-gray-200 text-gray-700">Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmEliminarEvidencia}
+              className="bg-red-600 hover:bg-red-700 text-white font-bold"
+            >
+              Sí, eliminar fotografía
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ================= MODAL DE EDICIÓN / REGISTRO ================= */}
       {actividadEnEdicion && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
@@ -449,7 +637,7 @@ export default function EmbajaReporte() {
               <h3 className="font-black text-xl text-gray-800 flex items-center gap-2">
                 <Edit2 size={20} className="text-[#00689D]"/> 
                 {String(actividadEnEdicion.id || '').startsWith('act-') 
-                  ? 'Nueva Actividad' 
+                  ? 'Registrar Actividad en Reporte' 
                   : (esPropietario ? 'Editar Actividad' : 'Detalles de Actividad Compartida')}
               </h3>
               <button onClick={() => setActividadEnEdicion(null)} className="p-1 hover:bg-gray-200 rounded-full text-gray-500">
@@ -462,7 +650,7 @@ export default function EmbajaReporte() {
               {!esPropietario && (
                 <div className="mb-6 bg-blue-50 border border-blue-200 text-blue-800 p-4 rounded-xl flex gap-3 text-sm">
                   <Info className="w-5 h-5 shrink-0 text-[#00689D]"/>
-                  <p><strong>Actividad Compartida:</strong> Este evento fue creado por otro embajador. Puedes consultar los detalles y <strong>subir tus propias evidencias fotográficas</strong>, pero no puedes modificar la información general.</p>
+                  <p><strong>Actividad Compartida:</strong> Este evento fue creado por otro embajador. Puedes consultar los detalles y <strong>subir tus propias evidencias fotográficas</strong> para que sumen a tu reporte, pero no puedes modificar la información general.</p>
                 </div>
               )}
 
@@ -473,12 +661,12 @@ export default function EmbajaReporte() {
                   <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">Datos Generales</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-gray-600 mb-1">Nombre de la Actividad</label>
+                      <label className="block text-xs font-bold text-gray-600 mb-1">Nombre de la Actividad <span className="text-red-500">*</span></label>
                       <input disabled={!esPropietario} required type="text" name="nombre" value={actividadEnEdicion.nombre || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:border-[#00689D] outline-none disabled:bg-gray-100 disabled:text-gray-500"/>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-gray-600 mb-1">Tipo de Acción Principal</label>
-                      <select disabled={!esPropietario} name="tipo_actividad" value={actividadEnEdicion.tipo_actividad || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 outline-none focus:border-[#00689D]">
+                      <label className="block text-xs font-bold text-gray-600 mb-1">Tipo de Acción Principal <span className="text-red-500">*</span></label>
+                      <select disabled={!esPropietario} required name="tipo_actividad" value={actividadEnEdicion.tipo_actividad || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 outline-none focus:border-[#00689D]">
                         <option value="">-- Selecciona --</option>
                         {accionesDB.map(tipo => <option key={tipo.id} value={tipo.nombre}>{tipo.nombre}</option>)}
                       </select>
@@ -487,21 +675,21 @@ export default function EmbajaReporte() {
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-gray-600 mb-1">Fecha</label>
-                      <input disabled={!esPropietario} type="date" name="fecha_evento" value={actividadEnEdicion.fecha_evento?.split('T')[0] || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"/>
+                      <label className="block text-xs font-bold text-gray-600 mb-1">Fecha <span className="text-red-500">*</span></label>
+                      <input disabled={!esPropietario} required type="date" name="fecha_evento" value={actividadEnEdicion.fecha_evento?.split('T')[0] || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"/>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-gray-600 mb-1">Inicio</label>
-                      <input disabled={!esPropietario} type="time" name="hora_inicio" value={actividadEnEdicion.hora_inicio || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"/>
+                      <label className="block text-xs font-bold text-gray-600 mb-1">Inicio <span className="text-red-500">*</span></label>
+                      <input disabled={!esPropietario} required type="time" name="hora_inicio" value={actividadEnEdicion.hora_inicio || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"/>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-gray-600 mb-1">Fin</label>
-                      <input disabled={!esPropietario} type="time" name="hora_fin" value={actividadEnEdicion.hora_fin || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"/>
+                      <label className="block text-xs font-bold text-gray-600 mb-1">Fin <span className="text-red-500">*</span></label>
+                      <input disabled={!esPropietario} required type="time" name="hora_fin" value={actividadEnEdicion.hora_fin || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"/>
                     </div>
                   </div>
 
                   <div className="bg-blue-50/40 p-4 rounded-xl border border-blue-100 mt-2">
-                    <label className="flex items-center gap-1 text-xs font-bold text-[#00689D] mb-2"><Globe size={14}/> Alineación ODS (Máximo 4 - El primero es el Principal)</label>
+                    <label className="flex items-center gap-1 text-xs font-bold text-[#00689D] mb-2"><Globe size={14}/> Alineación ODS <span className="text-red-500">*</span> (Máximo 4 - El primero es el Principal)</label>
                     <div className="flex flex-wrap gap-2">
                       {odsDB.map(ods => {
                         const isSelected = actividadEnEdicion.ods_seleccionados?.includes(ods.id);
@@ -527,18 +715,18 @@ export default function EmbajaReporte() {
                   </div>
                 </div>
 
-                {/* UBICACIÓN */}
+                {/* UBICACIÓN Y COLABORACIÓN */}
                 <div className="space-y-4">
-                  <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">Ubicación</h4>
+                  <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">Ubicación y Colaboración</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-gray-600 mb-1">Lugar de la Actividad</label>
-                      <input disabled={!esPropietario} type="text" name="lugar" value={actividadEnEdicion.lugar || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"/>
+                      <label className="block text-xs font-bold text-gray-600 mb-1">Lugar de la Actividad <span className="text-red-500">*</span></label>
+                      <input disabled={!esPropietario} required type="text" name="lugar" value={actividadEnEdicion.lugar || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 outline-none focus:border-[#00689D]"/>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-gray-600 mb-1">Municipio</label>
+                      <label className="block text-xs font-bold text-gray-600 mb-1">Municipio <span className="text-red-500">*</span></label>
                       <select 
-                        disabled={!esPropietario} 
+                        disabled={!esPropietario} required
                         name="municipio" 
                         value={actividadEnEdicion.domicilio?.municipio || ''} 
                         onChange={handleDomicilioChange} 
@@ -551,20 +739,64 @@ export default function EmbajaReporte() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-gray-600 mb-1">Colonia</label>
-                      <input disabled={!esPropietario} type="text" name="colonia" value={actividadEnEdicion.domicilio?.colonia || ''} onChange={handleDomicilioChange} className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"/>
+                      <label className="block text-xs font-bold text-gray-600 mb-1">Colonia <span className="text-red-500">*</span></label>
+                      <input disabled={!esPropietario} required type="text" name="colonia" value={actividadEnEdicion.domicilio?.colonia || ''} onChange={handleDomicilioChange} className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 outline-none focus:border-[#00689D]"/>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-gray-600 mb-1">Calle</label>
-                      <input disabled={!esPropietario} type="text" name="calle" value={actividadEnEdicion.domicilio?.calle || ''} onChange={handleDomicilioChange} className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"/>
+                      <label className="block text-xs font-bold text-gray-600 mb-1">Calle <span className="text-red-500">*</span></label>
+                      <input disabled={!esPropietario} required type="text" name="calle" value={actividadEnEdicion.domicilio?.calle || ''} onChange={handleDomicilioChange} className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 outline-none focus:border-[#00689D]"/>
                     </div>
                   </div>
+
+                  {/* BLOQUE COLABORACIÓN */}
+                  {esPropietario && String(actividadEnEdicion.id || '').startsWith('act-') && (
+                    <div className="bg-orange-50/50 p-4 border border-orange-100 rounded-xl mt-4">
+                      <label className="flex items-center gap-2 cursor-pointer mb-2">
+                        <input 
+                          type="checkbox" 
+                          name="es_colaborativa" 
+                          checked={actividadEnEdicion.es_colaborativa || false} 
+                          onChange={handleChangeSimple} 
+                          className="w-4 h-4 text-[#00689D] rounded border-gray-300 focus:ring-[#00689D]"
+                        />
+                        <span className="text-sm font-bold text-gray-800 flex items-center gap-1">
+                          <Users size={16} className="text-orange-600" /> ¿Asististe a esta actividad organizada por otro embajador?
+                        </span>
+                      </label>
+                      {actividadEnEdicion.es_colaborativa && (
+                        <div className="mt-3 ml-6">
+                          <label className="block text-xs font-bold text-gray-600 mb-1">Selecciona al organizador (Del municipio seleccionado arriba) <span className="text-red-500">*</span></label>
+                          <select 
+                            required
+                            name="colaborador_id" 
+                            value={actividadEnEdicion.colaborador_id || ''} 
+                            onChange={handleChangeSimple} 
+                            className="w-full md:w-1/2 border border-gray-300 rounded-lg p-2 text-sm bg-white outline-none focus:border-[#00689D]"
+                          >
+                            <option value="">-- Buscar organizador --</option>
+                            {embajadoresLocal.length === 0 ? (
+                              <option value="" disabled>No hay más embajadores en este municipio</option>
+                            ) : (
+                              embajadoresLocal.map(emb => (
+                                <option key={emb.usuario_id} value={emb.usuario_id}>
+                                  {emb.usuarios?.nombre} {emb.usuarios?.apellido}
+                                </option>
+                              ))
+                            )}
+                          </select>
+                          {actividadEnEdicion.domicilio?.municipio === '' && <p className="text-[10px] text-orange-600 mt-1">Primero debes seleccionar el municipio en la sección de arriba.</p>}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* BENEFICIARIOS Y CONTADORES */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <div className="space-y-4">
-                    <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">Beneficiarios</h4>
+                    <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2 flex justify-between">
+                      Beneficiarios <span className="text-red-500 ml-1 text-xs normal-case tracking-normal font-normal">* Al menos un recuadro debe tener valor</span>
+                    </h4>
                     {categoriasDB.map(cat => {
                       const esFilaTotal = cat.id === 99;
 
@@ -586,33 +818,25 @@ export default function EmbajaReporte() {
                       const strM = valM > 0 ? valM.toString() : '';
 
                       return (
-                        <div key={cat.id} className={`flex gap-2 items-center p-2 rounded-lg border ${esFilaTotal ? 'bg-[#00689D]/5 border-[#00689D]/20' : 'bg-gray-50 border-gray-100'}`}>
+                        <div key={cat.id} className={`flex gap-2 items-center p-2 rounded-lg border ${esFilaTotal ? 'bg-[#00689D]/5 border-[#00689D]/20 mt-4' : 'bg-gray-50 border-gray-100'}`}>
                           <span className={`w-1/3 text-[10px] leading-tight ${esFilaTotal ? 'font-black text-[#00689D]' : 'font-bold text-gray-600'}`}>
                             {cat.nombre}
                           </span>
                           
                           <input 
-                            type="number" 
-                            placeholder="0" 
-                            value={strTotal} 
-                            disabled
-                            tabIndex={-1}
+                            type="number" placeholder="0" value={strTotal} disabled tabIndex={-1}
                             className={`w-1/5 border text-center rounded p-1 text-xs cursor-not-allowed pointer-events-none select-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${esFilaTotal ? 'bg-[#00689D]/10 border-[#00689D]/20 text-[#00689D] font-bold' : 'border-gray-200 bg-gray-100 text-gray-500'}`}
                           />
                           
                           <input 
-                            type="number" 
-                            placeholder="H" 
-                            value={strH} 
+                            type="number" min="0" placeholder="H" value={strH} 
                             onChange={esFilaTotal ? undefined : (e) => handleBeneficiarioChange(cat.id, 'hombres', e.target.value)} 
                             disabled={esFilaTotal || !esPropietario}
                             className={`w-1/5 text-center border rounded p-1 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${esFilaTotal || !esPropietario ? 'bg-gray-100 text-gray-500 font-bold cursor-not-allowed' : 'border-gray-300 focus:outline-none focus:border-[#00689D]'}`}
                           />
                           
                           <input 
-                            type="number" 
-                            placeholder="M" 
-                            value={strM} 
+                            type="number" min="0" placeholder="M" value={strM} 
                             onChange={esFilaTotal ? undefined : (e) => handleBeneficiarioChange(cat.id, 'mujeres', e.target.value)} 
                             disabled={esFilaTotal || !esPropietario}
                             className={`w-1/5 text-center border rounded p-1 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${esFilaTotal || !esPropietario ? 'bg-gray-100 text-gray-500 font-bold cursor-not-allowed' : 'border-gray-300 focus:outline-none focus:border-[#00689D]'}`}
@@ -623,21 +847,21 @@ export default function EmbajaReporte() {
                   </div>
 
                   <div className="space-y-4">
-                    <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">Rango de Edad Promedio</h4>
-                    <input disabled={!esPropietario} type="text" name="rango_edad" value={actividadEnEdicion.rango_edad || ''} onChange={handleChangeSimple} placeholder="Ej: 15 a 18 años" className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 outline-none focus:border-[#00689D]"/>
+                    <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">Rango de Edad Promedio <span className="text-red-500">*</span></h4>
+                    <input disabled={!esPropietario} required type="text" name="rango_edad" value={actividadEnEdicion.rango_edad || ''} onChange={handleChangeSimple} placeholder="Ej: 15 a 18 años" className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 outline-none focus:border-[#00689D]"/>
                   </div>
                 </div>
 
                 {/* DESCRIPCIÓN */}
                 <div className="space-y-4">
-                  <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">Descripción de la Actividad</h4>
-                  <textarea disabled={!esPropietario} name="descripcion" rows={3} value={actividadEnEdicion.descripcion || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#00689D] outline-none resize-none disabled:bg-gray-100 disabled:text-gray-500"/>
+                  <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">Descripción de la Actividad <span className="text-red-500">*</span></h4>
+                  <textarea disabled={!esPropietario} required name="descripcion" rows={3} value={actividadEnEdicion.descripcion || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#00689D] outline-none resize-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="Describe brevemente lo que hicieron..."/>
                 </div>
 
-                {/* EVIDENCIAS (Siempre Habilitadas) */}
+                {/* EVIDENCIAS */}
                 <div className="space-y-4">
                   <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">
-                    {esPropietario ? 'Evidencias Fotográficas' : 'Mis Evidencias Fotográficas'} ({actividadEnEdicion.evidencias?.length || 0} / 4)
+                    {esPropietario ? 'Evidencias Fotográficas' : 'Mis Evidencias Fotográficas'} <span className="text-red-500">*</span> ({actividadEnEdicion.evidencias?.length || 0} / 4)
                   </h4>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {actividadEnEdicion.evidencias?.map((ev: any) => (
@@ -645,10 +869,11 @@ export default function EmbajaReporte() {
                         <img src={ev.url} alt="Evidencia" className="w-full h-full object-cover" />
                         <button 
                           type="button"
-                          onClick={() => eliminarEvidencia(ev.id)}
-                          className="absolute top-2 right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => setEvidenciaToDelete(ev.id)}
+                          className="absolute top-2 right-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors"
+                          title="Eliminar evidencia"
                         >
-                          <X size={16}/>
+                          <X size={18}/>
                         </button>
                       </div>
                     ))}
@@ -661,6 +886,7 @@ export default function EmbajaReporte() {
                       </label>
                     )}
                   </div>
+                  {(actividadEnEdicion.evidencias?.length || 0) === 0 && <p className="text-xs text-red-500 font-bold mt-1">Debes subir al menos 1 fotografía de evidencia.</p>}
                 </div>
 
               </form>
@@ -670,7 +896,7 @@ export default function EmbajaReporte() {
               <button type="button" onClick={() => setActividadEnEdicion(null)} className="flex-1 py-3 rounded-xl font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-100 transition-colors">
                 Cancelar
               </button>
-              <button form="form-edicion" type="submit" disabled={guardando} className="flex-1 py-3 rounded-xl font-bold text-white bg-[#00689D] hover:bg-[#00527A] disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-md">
+              <button form="form-edicion" type="submit" disabled={guardando || (actividadEnEdicion.evidencias?.length || 0) === 0} className="flex-1 py-3 rounded-xl font-bold text-white bg-[#00689D] hover:bg-[#00527A] disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-md">
                 {guardando ? <><Loader2 className="animate-spin" size={18}/> Guardando...</> : <><Save size={20}/> Guardar {esPropietario ? 'Actividad' : 'Evidencias'}</>}
               </button>
             </div>
@@ -719,9 +945,9 @@ export default function EmbajaReporte() {
                 <p className="text-xs text-gray-600 mt-1">Gestiona las actividades de este periodo</p>
               </div>
               <button 
-                onClick={() => notifyWithSound('El reporte se enviará cuando hayas completado todas las actividades', 'info')}
-                disabled={reporteSeleccionado.estado === 'Enviado'}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-colors ${reporteSeleccionado.estado === 'Enviado' ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-[#00689D] text-white hover:bg-[#00527A]'}`}
+                onClick={() => setShowSendDialog(true)}
+                disabled={reporteSeleccionado.estado === 'Enviado' || actividades.length === 0}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-colors ${reporteSeleccionado.estado === 'Enviado' || actividades.length === 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#00689D] text-white hover:bg-[#00527A] shadow-md'}`}
               >
                 <Send size={16}/> Enviar Reporte
               </button>
@@ -742,7 +968,7 @@ export default function EmbajaReporte() {
                   <div className="text-center py-12 text-gray-500">
                     <Calendar className="w-12 h-12 mx-auto mb-4 opacity-30"/>
                     <p className="font-bold text-lg">No hay actividades registradas</p>
-                    <p className="text-sm">Agrega actividades para este mes</p>
+                    <p className="text-sm">Agrega actividades para este mes para poder enviar tu reporte</p>
                   </div>
                 ) : (
                   actividades.map((act, idx) => (
