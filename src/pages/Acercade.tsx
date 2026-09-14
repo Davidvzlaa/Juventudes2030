@@ -22,12 +22,7 @@ export default function AcercaDe() {
         </div>
         
         <div className="relative z-10 max-w-3xl">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="bg-white/10 p-2.5 rounded-xl backdrop-blur-md">
-              <Globe className="text-blue-300" size={28} />
-            </div>
-            <span className="text-blue-200 font-bold tracking-wider uppercase text-sm">Nuestra Historia</span>
-          </div>
+         
           
           <h1 className="text-4xl md:text-5xl font-black tracking-tight mb-6 leading-tight">
             Juventudes 2030: Liderazgo y Acción en Sinaloa
@@ -39,11 +34,11 @@ export default function AcercaDe() {
 
           <div className="flex flex-wrap gap-4">
             <div className="bg-white/10 border border-white/20 rounded-xl px-5 py-3 flex items-center gap-3 backdrop-blur-sm hover:bg-white/20 transition-colors cursor-default">
-              <Users className="text-blue-300" size={20} />
+              
               <span className="font-semibold text-sm">Red de Embajadores</span>
             </div>
             <div className="bg-white/10 border border-white/20 rounded-xl px-5 py-3 flex items-center gap-3 backdrop-blur-sm hover:bg-white/20 transition-colors cursor-default">
-              <Target className="text-green-300" size={20} />
+              
               <span className="font-semibold text-sm">Impacto en la Agenda 2030</span>
             </div>
           </div>
@@ -93,7 +88,6 @@ export default function AcercaDe() {
             <div className="bg-white/10 p-6 rounded-2xl border border-white/10 backdrop-blur-sm transform group-hover:translate-x-2 transition-transform duration-500">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-blue-200 font-bold uppercase tracking-wider text-sm">Embajadores 2030</span>
-                <Users className="text-[#26BDE2]" size={24} />
               </div>
               <p className="text-3xl font-black text-white">40 <span className="text-lg font-medium text-blue-200">jóvenes</span></p>
               <p className="text-sm text-blue-100/70 mt-2">Representantes encargados de diseñar y liderar proyectos de impacto.</p>
@@ -102,7 +96,6 @@ export default function AcercaDe() {
             <div className="bg-white/10 p-6 rounded-2xl border border-white/10 backdrop-blur-sm transform group-hover:translate-x-2 transition-transform duration-500 delay-75">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-green-200 font-bold uppercase tracking-wider text-sm">Voluntariado 2030</span>
-                <Target className="text-green-400" size={24} />
               </div>
               <p className="text-3xl font-black text-white">Hasta 260 <span className="text-lg font-medium text-green-200">jóvenes</span></p>
               <p className="text-sm text-blue-100/70 mt-2">Participantes activos en brigadas, campañas y actividades comunitarias.</p>
