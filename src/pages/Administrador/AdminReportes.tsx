@@ -2,41 +2,32 @@ import React, { useState, useEffect } from 'react';
 import { 
   Inbox, FileText, Edit2, X, Save, Settings2, Plus, Calendar, Loader2, Filter, MapPin, Globe, AlertTriangle, RefreshCw, Lock
 } from 'lucide-react';
-import { PDFViewer } from '@react-pdf/renderer';
+import { PDFViewer, PDFDownloadLink } from '@react-pdf/renderer';
 import { supabase } from '@/lib/supabase'; 
 import { toast } from 'sonner';
 
-// === IMPORTA TU COMPONENTE PDF AQUÍ ===
-// (Asegúrate de que la ruta coincida con donde guardaste el archivo ReportePDF.tsx)
 import ReportePDF from '@/ReportePDF';
+
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-// Función auxiliar para emitir la notificación con sonido y posición inferior derecha
+// MEJORA: El audio se instancia una sola vez fuera de la función para evitar fugas de memoria
+const notificationSound = new Audio('/notification.mp3');
+notificationSound.volume = 0.5;
+
 const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
-  const audio = new Audio('/notification.mp3');
-  audio.volume = 0.5;
-  audio.play().catch(err => console.log('Audio bloqueado por el navegador:', err));
+  notificationSound.currentTime = 0;
+  notificationSound.play().catch(err => console.log('Audio bloqueado:', err));
 
   const options = { position: 'bottom-right' as const };
 
   switch (type) {
-    case 'success':
-      toast.success(message, options);
-      break;
-    case 'error':
-      toast.error(message, options);
-      break;
-    case 'warning':
-      toast.warning(message, options);
-      break;
-    default:
-      toast.info(message, options);
+    case 'success': toast.success(message, options); break;
+    case 'error': toast.error(message, options); break;
+    case 'warning': toast.warning(message, options); break;
+    default: toast.info(message, options);
   }
 };
 
-// ==========================================
-// PANTALLA PRINCIPAL ADMIN
-// ==========================================
 export default function AdminReportes() {
   const [reportes, setReportes] = useState<any[]>([]);
   const [reporteSeleccionado, setReporteSeleccionado] = useState<any>(null);
@@ -69,7 +60,6 @@ export default function AdminReportes() {
   const [mesDeshabilitar, setMesDeshabilitar] = useState<string>('');
   const [procesandoDeshabilitar, setProcesandoDeshabilitar] = useState(false);
 
-  // Prevenir scroll del body si algún modal está abierto
   useEffect(() => {
     if (showHabilitarModal || showDeshabilitarModal || modalAnular.visible || actividadEnEdicion) {
       document.body.style.overflow = 'hidden';
@@ -182,9 +172,6 @@ export default function AdminReportes() {
     finally { setProcesandoDeshabilitar(false); }
   };
 
-  // ==========================================
-  // CORRECCIÓN: FETCH DE ACTIVIDADES PARA ADMIN
-  // ==========================================
   const seleccionarReporte = async (reporte: any, forceRefresh = false) => {
     if (!forceRefresh && reporteSeleccionado?.id === reporte.id) {
       setReporteSeleccionado(null); 
@@ -198,7 +185,6 @@ export default function AdminReportes() {
     const fechaInicio = `${reporte.anio}-${strMes}-01`;
     const fechaFin = `${reporte.anio}-${strMes}-${ultimoDia}`;
 
-    // 1. Actividades CREADAS por el embajador en este mes
     const { data: actsCreadas } = await supabase.from('actividades').select(`
         *, municipios(nombre),
         actividad_beneficiarios(categoria_id, hombres, mujeres, total),
@@ -212,7 +198,6 @@ export default function AdminReportes() {
       .lte('fecha_evento', fechaFin)
       .is('fecha_eliminacion', null);
 
-    // 2. Actividades a las que ASISTIÓ el embajador en este mes
     const { data: actsUnidas } = await supabase.from('actividad_asistentes').select(`
         actividad_id,
         actividades (
@@ -226,7 +211,6 @@ export default function AdminReportes() {
       `)
       .eq('usuario_id', reporte.usuario_id);
 
-    // 3. Unir y limpiar duplicados
     const actividadesMap = new Map();
 
     actsCreadas?.forEach((act: any) => {
@@ -236,7 +220,6 @@ export default function AdminReportes() {
     actsUnidas?.forEach((item: any) => {
       const act = Array.isArray(item.actividades) ? item.actividades[0] : item.actividades;
       if (act && act.fecha_eliminacion === null) {
-        // Filtrar por fechas, ya que la tabla puente no filtra fechas en la query principal
         if (act.fecha_evento >= fechaInicio && act.fecha_evento <= fechaFin) {
           if (!actividadesMap.has(act.id)) {
             actividadesMap.set(act.id, act);
@@ -254,7 +237,6 @@ export default function AdminReportes() {
       return;
     }
 
-    // Obtener los datos de validación (anulación) de la tabla puente del reporte
     const { data: repActs } = await supabase.from('reporte_act').select('actividad_id, estado_validacion, comentarios_admin').eq('reporte_id', reporte.id);
     const validacionMap = new Map();
     repActs?.forEach(ra => validacionMap.set(ra.actividad_id, { anulada: ra.estado_validacion === 'Rechazada', comentario: ra.comentarios_admin || '' }));
@@ -422,7 +404,7 @@ export default function AdminReportes() {
 
       notifyWithSound('Actividad modificada exitosamente', 'success');
       setActividadEnEdicion(null);
-      seleccionarReporte(reporteSeleccionado, true); // Le pasamos true para forzar la recarga 
+      seleccionarReporte(reporteSeleccionado, true); 
       
     } catch (error: any) { 
       notifyWithSound('Error al guardar: ' + error.message, 'error'); 
@@ -700,11 +682,38 @@ export default function AdminReportes() {
             </div>
             
             <div className="flex-1 flex flex-col xl:flex-row overflow-y-auto lg:overflow-hidden">
-              <div className="w-full xl:flex-1 bg-gray-600 flex flex-col min-h-[60vh] xl:min-h-0 order-2 xl:order-1">
-                <PDFViewer width="100%" height="100%" className="border-none">
-                  <ReportePDF snapshot={snapshotParaPDF} categorias={categoriasDB} acciones={accionesDB} />
-                </PDFViewer>
-              </div>
+              <div className="w-full xl:flex-1 bg-gray-600 flex flex-col min-h-[40vh] xl:min-h-0 order-2 xl:order-1 relative">
+  
+  {/* VISTA PARA COMPUTADORAS (Pantallas medianas y grandes) */}
+  <div className="hidden md:block w-full h-full">
+    <PDFViewer width="100%" height="100%" className="border-none">
+      <ReportePDF snapshot={snapshotParaPDF} categorias={categoriasDB} acciones={accionesDB} />
+    </PDFViewer>
+  </div>
+
+  {/* VISTA PARA CELULARES (Pantallas pequeñas) */}
+  <div className="md:hidden flex flex-col items-center justify-center w-full h-full bg-gray-100 p-6 text-center">
+    <FileText size={64} className="text-gray-300 mb-4" />
+    <h3 className="font-bold text-gray-700 mb-2">Previsualización no disponible en móviles</h3>
+    <p className="text-xs text-gray-500 mb-6">Descarga el PDF para verlo en el visor de tu dispositivo.</p>
+    
+    <PDFDownloadLink 
+      document={<ReportePDF snapshot={snapshotParaPDF} categorias={categoriasDB} acciones={accionesDB} />} 
+      fileName={`Reporte-${reporteSeleccionado.nombre_mes}-${reporteSeleccionado.embajador.nombre}.pdf`}
+      className="bg-[#00689D] text-white px-6 py-3 rounded-xl font-bold shadow-md hover:bg-[#00527A] flex items-center gap-2 transition-colors"
+    >
+      {/* react-pdf pasa el estado de carga mediante una función hija */}
+      {({ loading }) => (
+        loading ? (
+          <><Loader2 size={18} className="animate-spin" /> Generando documento...</>
+        ) : (
+          <><FileText size={18} /> Descargar Reporte PDF</>
+        )
+      )}
+    </PDFDownloadLink>
+  </div>
+  
+</div>
 
               <div className="w-full xl:w-80 bg-gray-50 border-b xl:border-b-0 xl:border-l border-gray-200 flex flex-col shrink-0 order-1 xl:order-2">
                 <div className="p-4 bg-white border-b border-gray-200 flex items-center justify-between">
