@@ -1,5 +1,5 @@
 import { 
-  Globe, Users, Target, MapPin, 
+  Globe, MapPin, 
   Calendar, Award, ArrowRight, BookOpen, 
   Tent, Plane, ShieldCheck
 } from 'lucide-react';
