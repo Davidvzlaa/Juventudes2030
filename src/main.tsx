@@ -28,7 +28,7 @@ import AdminUsuariosDinamico from './pages/Administrador/AdminUsuariosDinamico';
 import AdminCatalogos from './pages/Administrador/AdminCatalogos';
 import AdminReportes from './pages/Administrador/AdminReportes';
 import AdminCalendario from './pages/Administrador/AdminCalendario';
-import AdminActividades from './pages/Administrador/AdminActividades';
+// import AdminActividades from './pages/Administrador/AdminActividades';
 
 // ==========================================
 // MÓDULOS EMBAJADOR
@@ -69,7 +69,7 @@ export default function App() {
               <Route path="usuarios" element={<AdminUsuariosDinamico />} />
               <Route path="reportes" element={<AdminReportes />} />
               <Route path="calendario" element={<AdminCalendario />} />
-              <Route path="actividades" element={<AdminActividades />} />
+              {/* <Route path="actividades" element={<AdminActividades />} /> */}
             </Route>
 
             {/* Layout secundario para configuración */}
