@@ -34,7 +34,7 @@ import AdminActividades from './pages/Administrador/AdminActividades';
 // MÓDULOS EMBAJADOR
 // ==========================================
 import EmbajaDashboard from './pages/Embajadores/EmbajaDashboard';
-import EmbajaActividad from './pages/Embajadores/EmbajaActividad';
+// import EmbajaActividad from './pages/Embajadores/EmbajaActividad';
 import EmbajaReporte from './pages/Embajadores/EmbajaReporte';
 import EmbajaCalendario from './pages/Embajadores/EmbajaCalendario';
 
@@ -90,7 +90,7 @@ export default function App() {
             <Route path="/embajador" element={<EmbajadorLayout />}>
               <Route index element={<Navigate to="inicio" replace />} />
               <Route path="inicio" element={<EmbajaDashboard />} />
-              <Route path="actividades" element={<EmbajaActividad />} />
+              {/* <Route path="actividades" element={<EmbajaActividad />} /> */}
               <Route path="calendario" element={<EmbajaCalendario />} />
               <Route path="reportes" element={<EmbajaReporte />} />
             </Route>
