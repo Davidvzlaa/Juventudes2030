@@ -161,7 +161,7 @@ export default function Header() {
                 {userRole === 'Embajador' && (
                   <>
                     <Link to="/embajador/inicio" className={navLinkClass}>Mi Espacio <span className={underlineClass}></span></Link>
-                    <Link to="/embajador/actividades" className={navLinkClass}>Mis Actividades <span className={underlineClass}></span></Link>
+                    <Link to="/embajador/calendario" className={navLinkClass}>Mi Agenda <span className={underlineClass}></span></Link>
                     <Link to="/embajador/reportes" className={navLinkClass}>Mis Reportes <span className={underlineClass}></span></Link>
                   </>
                 )}
@@ -236,7 +236,7 @@ export default function Header() {
                 {userRole === 'Embajador' && (
                   <>
                     <Link to="/embajador/inicio" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Mi Espacio</Link>
-                    <Link to="/embajador/actividades" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Mis Actividades</Link>
+                    <Link to="/embajador/calendario" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Mi Agenda</Link>
                     <Link to="/embajador/reportes" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Mis Reportes</Link>
                   </>
                 )}
