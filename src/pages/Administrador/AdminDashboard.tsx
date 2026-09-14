@@ -8,17 +8,50 @@ import {
 import { 
   Sun, Moon, Sunrise, Globe, Users, Target, Activity, ShieldCheck, MapPin 
 } from 'lucide-react';
-import { toast } from 'sonner'; // <-- 1. Importamos Sonner
+import { toast } from 'sonner';
 
+// ==========================================
+// INTERFACES (Mejora: Tipado Estricto)
+// ==========================================
+interface BaseNamedElement {
+  nombre: string;
+}
+
+interface OdsData {
+  numero: number;
+  nombre: string;
+}
+
+interface Actividad {
+  id: number;
+  beneficiarios_directos: number | null;
+  beneficiarios_indirectos: number | null;
+  municipios: BaseNamedElement | null;
+}
+
+interface Usuario {
+  id: string;
+  nombre: string;
+  apellido: string;
+  roles: BaseNamedElement | null;
+  embajadores: { municipios: BaseNamedElement | null } | { municipios: BaseNamedElement | null }[] | null;
+  actividades: { id: number }[] | null;
+}
+
+interface ActividadOds {
+  ods: OdsData | OdsData[] | null;
+}
+
+// ==========================================
+// FUNCIONES AUXILIARES
+// ==========================================
 const getRelatedName = (relation: { nombre: string } | { nombre: string }[] | null | undefined) => {
   if (!relation) return null;
   if (Array.isArray(relation)) return relation[0]?.nombre;
   return relation?.nombre;
 };
 
-// ==========================================
-// COMPONENTE REUTILIZABLE PARA LOS BOTONES "TOP"
-// ==========================================
+// Componente para los botones "Top"
 const FilterTopButtons = ({ current, setter }: { current: number, setter: (val: number) => void }) => (
   <div className="flex flex-wrap gap-1 bg-gray-50/80 p-1.5 rounded-lg border border-gray-200 shadow-inner">
     {[3, 5, 10, 20, 0].map(val => (
@@ -42,17 +75,16 @@ export default function AdminDashboard() {
   const { usuarioDatos } = useAuth();
   const [loading, setLoading] = useState(true);
   
+  // Estado tipado para los datos crudos
   const [rawData, setRawData] = useState({
-    actividades: [] as any[],
-    usuarios: [] as any[],
-    actOds: [] as any[],
-    catMunicipios: [] as any[],
-    catOds: [] as any[]
+    actividades: [] as Actividad[],
+    usuarios: [] as Usuario[],
+    actOds: [] as ActividadOds[],
+    catMunicipios: [] as BaseNamedElement[],
+    catOds: [] as OdsData[]
   });
 
-  // ==========================================
-  // ESTADOS DE FILTROS
-  // ==========================================
+  // Filtros
   const [filtroRol, setFiltroRol] = useState<'Todos' | 'Administrador' | 'Embajador'>('Todos');
   const [filtroTopOds, setFiltroTopOds] = useState<number>(5); 
   const [filtroTopEmbajadores, setFiltroTopEmbajadores] = useState<number>(5);
@@ -61,9 +93,6 @@ export default function AdminDashboard() {
 
   const COLORS = ['#2563eb', '#16a34a', '#9333ea', '#eab308', '#ef4444', '#0ea5e9', '#f97316', '#8b5cf6', '#14b8a6', '#f43f5e'];
 
-  // ==========================================
-  // LÓGICA DE SALUDO DINÁMICO
-  // ==========================================
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour >= 5 && hour < 12) return { text: 'Buenos días', icon: <Sunrise className="text-orange-300" size={32} /> };
@@ -74,34 +103,45 @@ export default function AdminDashboard() {
   const greeting = getGreeting();
 
   // ==========================================
-  // EXTRACCIÓN DE DATOS BASE Y CATÁLOGOS
+  // CARGA DE DATOS (CON FILTROS ESTRICTOS)
   // ==========================================
   useEffect(() => {
     const fetchDashboardData = async () => {
       setLoading(true);
       try {
+        // MEJORA: Consultas seguras que no inflan los datos.
+        // Solo traemos actividades "Validadas" y usuarios "Activos".
         const [resActividades, resUsuarios, resActOds, resMun, resOds] = await Promise.all([
-          supabase.from('actividades').select('id, beneficiarios_directos, beneficiarios_indirectos, municipios(nombre)'),
-          supabase.from('usuarios').select('id, nombre, apellido, roles(nombre), embajadores(municipios(nombre)), actividades!creado_por_usuario_id(id)'),
-          supabase.from('actividad_ods').select('ods(numero, nombre)'),
+          supabase.from('actividades')
+            .select('id, beneficiarios_directos, beneficiarios_indirectos, municipios(nombre)')
+            .eq('estado', 'Validada')
+            .is('fecha_eliminacion', null),
+          
+          supabase.from('usuarios')
+            .select('id, nombre, apellido, roles(nombre), embajadores(municipios(nombre)), actividades!creado_por_usuario_id(id)')
+            .eq('activo', true),
+
+          supabase.from('actividad_ods')
+            .select('ods(numero, nombre), actividades!inner(estado, fecha_eliminacion)')
+            .eq('actividades.estado', 'Validada')
+            .is('actividades.fecha_eliminacion', null),
+
           supabase.from('municipios').select('nombre').eq('activo', true),
           supabase.from('ods').select('numero, nombre').eq('activo', true)
         ]);
 
-        // Verificación de errores en las peticiones
         if (resActividades.error) throw resActividades.error;
         if (resUsuarios.error) throw resUsuarios.error;
 
         setRawData({
-          actividades: resActividades.data || [],
-          usuarios: resUsuarios.data || [],
-          actOds: resActOds.data || [],
-          catMunicipios: resMun.data || [],
-          catOds: resOds.data || []
+          actividades: resActividades.data as unknown as Actividad[] || [],
+          usuarios: resUsuarios.data as unknown as Usuario[] || [],
+          actOds: resActOds.data as unknown as ActividadOds[] || [],
+          catMunicipios: resMun.data as BaseNamedElement[] || [],
+          catOds: resOds.data as OdsData[] || []
         });
       } catch (error: any) {
         console.error("Error cargando dashboard:", error);
-        // <-- 2. Añadimos el Toast para notificar al usuario si la BD falla
         toast.error("Error al cargar las métricas del panel", {
           description: "Ocurrió un problema al conectar con la base de datos. Por favor, recarga la página.",
         });
@@ -302,8 +342,8 @@ export default function AdminDashboard() {
           <div className="bg-blue-100 p-4 rounded-xl text-blue-600 relative z-10"><Users size={28} /></div>
           <div className="relative z-10">
             <p className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-1">Red de Usuarios</p>
-            <h3 className="text-3xl font-black text-gray-900">{stats.totalUsuarios}</h3>
-            <p className="text-xs text-gray-400 font-medium mt-1">Registrados en plataforma</p>
+            <h3 className="text-3xl font-black text-gray-900">{stats.totalUsuarios.toLocaleString('es-MX')}</h3>
+            <p className="text-xs text-gray-400 font-medium mt-1">Registrados y activos en plataforma</p>
           </div>
         </div>
 
@@ -312,7 +352,7 @@ export default function AdminDashboard() {
           <div className="bg-green-100 p-4 rounded-xl text-green-600 relative z-10"><Activity size={28} /></div>
           <div className="relative z-10">
             <p className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-1">Acción Climática</p>
-            <h3 className="text-3xl font-black text-gray-900">{stats.totalActividades}</h3>
+            <h3 className="text-3xl font-black text-gray-900">{stats.totalActividades.toLocaleString('es-MX')}</h3>
             <p className="text-xs text-gray-400 font-medium mt-1">Actividades validadas totales</p>
           </div>
         </div>
@@ -322,8 +362,8 @@ export default function AdminDashboard() {
           <div className="bg-purple-100 p-4 rounded-xl text-purple-600 relative z-10"><Target size={28} /></div>
           <div className="relative z-10">
             <p className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-1">Impacto Global</p>
-            <h3 className="text-3xl font-black text-gray-900">{stats.totalBeneficiarios.toLocaleString()}</h3>
-            <p className="text-xs text-gray-400 font-medium mt-1">Personas beneficiadas</p>
+            <h3 className="text-3xl font-black text-gray-900">{stats.totalBeneficiarios.toLocaleString('es-MX')}</h3>
+            <p className="text-xs text-gray-400 font-medium mt-1">Personas beneficiadas confirmadas</p>
           </div>
         </div>
       </div>
@@ -358,8 +398,8 @@ export default function AdminDashboard() {
                 <Pie data={stats.usuariosPorRol} cx="50%" cy="50%" innerRadius={70} outerRadius={95} paddingAngle={4} dataKey="count" label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}>
                   {stats.usuariosPorRol.map((_, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                 </Pie>
-                <Tooltip formatter={(value) => [value ?? 0, 'Usuarios']} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-              </PieChart>
+                {/* Mejora: Formateo con separadores de miles */}
+<Tooltip formatter={(value: any) => [Number(value).toLocaleString('es-MX'), 'Usuarios']} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />              </PieChart>
             </ResponsiveContainer>
           </div>
         </div>
@@ -381,7 +421,7 @@ export default function AdminDashboard() {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                   <XAxis dataKey="name" tick={{ fontSize: 11, fontWeight: 600 }} stroke="#6b7280" angle={-45} textAnchor="end" />
                   <YAxis tick={{ fontSize: 11 }} stroke="#9ca3af" domain={[0, dynamicScale]} />
-                  <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Tooltip formatter={(value: any) => [Number(value).toLocaleString('es-MX'), 'Embajadores']} cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                   <Bar dataKey="embajadores" name="Embajadores" fill="#00689D" radius={[6, 6, 0, 0]} barSize={32} />
                 </BarChart>
               </ResponsiveContainer>
@@ -406,9 +446,8 @@ export default function AdminDashboard() {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                   <XAxis dataKey="name" tick={{ fontSize: 12, fontWeight: 600 }} stroke="#6b7280" angle={-45} textAnchor="end" />
                   <YAxis tick={{ fontSize: 12 }} stroke="#9ca3af" domain={[0, dynamicScale]} />
-                  <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Tooltip formatter={(value: any) => Number(value).toLocaleString('es-MX')} cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                   <Legend verticalAlign="top" height={40} iconType="circle" wrapperStyle={{ fontWeight: 600, fontSize: '13px' }} />
-                  {/* Tres barras agrupadas por municipio */}
                   <Bar dataKey="beneficiarios" name="Beneficiados" fill="#10b981" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="actividades" name="Actividades" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="embajadores" name="Embajadores" fill="#f59e0b" radius={[4, 4, 0, 0]} />
@@ -445,7 +484,7 @@ export default function AdminDashboard() {
                             <p className="font-extrabold text-gray-900">{data.name}</p>
                             <p className="text-sm text-gray-500 mt-1 flex items-center gap-1"><MapPin size={14}/> {data.municipio}</p>
                             <div className="mt-3 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg inline-block">
-                              <span className="font-bold text-sm">Actividades: {data.actividades}</span>
+                              <span className="font-bold text-sm">Actividades: {data.actividades.toLocaleString('es-MX')}</span>
                             </div>
                           </div>
                         );
@@ -479,7 +518,7 @@ export default function AdminDashboard() {
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
                   <XAxis type="number" stroke="#9ca3af" domain={[0, dynamicScale]} />
                   <YAxis type="category" dataKey="name" width={220} tick={{ fontSize: 12, fontWeight: 600 }} stroke="#374151" />
-                  <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Tooltip formatter={(value: any) => [Number(value).toLocaleString('es-MX'), 'Veces impactado']} cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                   <Bar dataKey="count" name="Veces impactado" fill="#8b5cf6" radius={[0, 6, 6, 0]} barSize={24}>
                     {stats.topOds.map((_, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                   </Bar>
@@ -492,4 +531,4 @@ export default function AdminDashboard() {
       </div>
     </div>
   );
-}
+}   
