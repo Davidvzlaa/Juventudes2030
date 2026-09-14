@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
+import { Outlet, Link, useLocation } from 'react-router-dom';
+// import { supabase } from '../../lib/supabase';
 import Header from '../Header';
 import { 
   Menu, X, MapPin, Users, Target, Folder, 
