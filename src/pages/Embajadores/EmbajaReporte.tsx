@@ -4,8 +4,9 @@ import {
   Plus, X, Save, UploadCloud, Edit2, Loader2, Info, Globe, Users
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
-// Importamos el AlertDialog de shadcn
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,32 +39,32 @@ const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | '
   }
 };
 
+const formatearFechaVisual = (fechaStr: string) => {
+  if (!fechaStr) return '';
+  const [year, month, day] = fechaStr.split('T')[0].split('-');
+  const fecha = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  return format(fecha, "d 'de' MMMM 'del' yyyy", { locale: es });
+};
+
 export default function EmbajaReporte() {
-  // ESTADO DE REPORTES
   const [reportes, setReportes] = useState<any[]>([]);
   const [reporteSeleccionado, setReporteSeleccionado] = useState<any>(null);
   const [actividades, setActividades] = useState<any[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
-  // ESTADO DE EDICIÓN
   const [actividadEnEdicion, setActividadEnEdicion] = useState<any>(null);
   const [guardando, setGuardando] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
-  // CATÁLOGOS DE BD
   const [categoriasDB, setCategoriasDB] = useState<any[]>([]);
   const [accionesDB, setAccionesDB] = useState<any[]>([]);
   const [odsDB, setOdsDB] = useState<any[]>([]); 
   const [municipiosDB, setMunicipiosDB] = useState<any[]>([]);
   const [embajadoresLocal, setEmbajadoresLocal] = useState<any[]>([]);
 
-  // MODALES
   const [showSendDialog, setShowSendDialog] = useState(false);
-  const [evidenciaToDelete, setEvidenciaToDelete] = useState<number | null>(null); // NUEVO ESTADO PARA EL MODAL DE EVIDENCIA
+  const [evidenciaToDelete, setEvidenciaToDelete] = useState<number | null>(null);
 
-  // ==========================================
-  // FETCH INICIAL
-  // ==========================================
   const fetchDatos = async () => {
     try {
       const { data: authData } = await supabase.auth.getUser();
@@ -99,9 +100,6 @@ export default function EmbajaReporte() {
 
   useEffect(() => { fetchDatos(); }, []);
 
-  // ==========================================
-  // CARGAR ACTIVIDADES DEL REPORTE
-  // ==========================================
   const seleccionarReporte = async (reporte: any) => {
     setReporteSeleccionado(reporte);
     setActividades([]); 
@@ -123,7 +121,7 @@ export default function EmbajaReporte() {
           actividad_acciones(tipo_accion_id, cantidad),
           actividad_sostenibilidad(area_id),
           actividad_ods(ods_id, es_principal, ods(numero, nombre)),
-          evidencias(id, url_archivo)
+          evidencias(id, url_archivo, usuario_id)
         `)
         .eq('creado_por_usuario_id', currentUserId) 
         .gte('fecha_evento', fechaInicio)   
@@ -143,7 +141,7 @@ export default function EmbajaReporte() {
             actividad_acciones(tipo_accion_id, cantidad),
             actividad_sostenibilidad(area_id),
             actividad_ods(ods_id, es_principal, ods(numero, nombre)),
-            evidencias(id, url_archivo)
+            evidencias(id, url_archivo, usuario_id)
           )
         `)
         .eq('usuario_id', currentUserId);
@@ -152,14 +150,12 @@ export default function EmbajaReporte() {
 
       const actividadesMap = new Map();
 
-      // Procesar creadas (DESCARTANDO CANCELADAS)
       actividadesCreadas?.forEach((act: any) => {
         if (act.estado !== 'Cancelada') {
           actividadesMap.set(act.id, { ...act, es_propia: true });
         }
       });
 
-      // Procesar unidas (DESCARTANDO CANCELADAS Y FUERA DE FECHA)
       actividadesUnidas?.forEach((item: any) => {
         const act: any = Array.isArray(item.actividades) ? item.actividades[0] : item.actividades;
         if (act && act.fecha_eliminacion === null && act.estado !== 'Cancelada') {
@@ -174,7 +170,6 @@ export default function EmbajaReporte() {
         }
       });
 
-      // Formatear la data combinada para el formulario y FIRMAR URLs
       const arrayActividades = Array.from(actividadesMap.values())
         .sort((a, b) => new Date(a.fecha_evento).getTime() - new Date(b.fecha_evento).getTime());
 
@@ -200,8 +195,10 @@ export default function EmbajaReporte() {
           }
 
           let evidenciasConUrlTemporal = [];
-          if (act.evidencias && act.evidencias.length > 0) {
-            evidenciasConUrlTemporal = await Promise.all(act.evidencias.map(async (ev: any) => {
+          const misEvidencias = act.evidencias?.filter((ev: any) => ev.usuario_id === currentUserId) || [];
+
+          if (misEvidencias.length > 0) {
+            evidenciasConUrlTemporal = await Promise.all(misEvidencias.map(async (ev: any) => {
               const { data } = await supabase.storage.from('evidencias').createSignedUrl(ev.url_archivo, 3600);
               return { 
                 id: ev.id, 
@@ -230,9 +227,6 @@ export default function EmbajaReporte() {
     }
   };
 
-  // ==========================================
-  // CARGAR EMBAJADORES SI ES COLABORATIVA
-  // ==========================================
   useEffect(() => {
     const cargarEmbajadores = async () => {
       const municipioId = actividadEnEdicion?.domicilio?.municipio;
@@ -252,9 +246,6 @@ export default function EmbajaReporte() {
     cargarEmbajadores();
   }, [actividadEnEdicion?.es_colaborativa, actividadEnEdicion?.domicilio?.municipio, currentUserId]);
 
-  // ==========================================
-  // HANDLERS
-  // ==========================================
   const handleChangeSimple = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     if (type === 'checkbox') {
@@ -310,60 +301,39 @@ export default function EmbajaReporte() {
     });
   };
 
-  // NUEVA LÓGICA DE ELIMINAR EVIDENCIA (CON MODAL)
   const confirmEliminarEvidencia = async () => {
     if (evidenciaToDelete === null) return;
     const idEliminar = evidenciaToDelete;
     const evEliminar = actividadEnEdicion.evidencias.find((ev: any) => ev.id === idEliminar);
     
-    // Si no tiene "file", significa que viene de la BD (ya estaba guardada)
     if (evEliminar && !evEliminar.file) {
       const toastId = toast.loading('Eliminando evidencia...');
       try {
-        // 1. Borrar archivo físico del bucket usando el path_interno
         if (evEliminar.path_interno) {
           const { error: storageError } = await supabase.storage.from('evidencias').remove([evEliminar.path_interno]);
           if (storageError) console.error("No se pudo borrar del storage:", storageError);
         }
 
-        // 2. Borrar de la base de datos SQL
         const { error: dbError } = await supabase.from('evidencias').delete().eq('id', idEliminar);
         if (dbError) throw dbError;
         
         toast.success('Evidencia eliminada', { id: toastId });
       } catch (error: any) {
-        setEvidenciaToDelete(null); // Cerramos el modal en caso de error
+        setEvidenciaToDelete(null); 
         return toast.error('Error al eliminar: ' + error.message, { id: toastId });
       }
     }
 
-    // Quitarla de la pantalla inmediatamente (haya sido de la BD o local)
     setActividadEnEdicion((prev: any) => ({
       ...prev, evidencias: prev.evidencias.filter((ev: any) => ev.id !== idEliminar)
     }));
     
-    setEvidenciaToDelete(null); // Cerramos el modal
+    setEvidenciaToDelete(null);
   };
 
-  // ==========================================
-  // GUARDAR EDICIÓN
-  // ==========================================
   const guardarEdicionActividad = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reporteSeleccionado || !actividadEnEdicion || !currentUserId) return;
-
-    let totalBeneficiariosSum = 0;
-    if (actividadEnEdicion.beneficiarios) {
-      Object.entries(actividadEnEdicion.beneficiarios).forEach(([catIdStr, val]: [string, any]) => {
-        if (Number(catIdStr) !== 99) {
-          totalBeneficiariosSum += parseInt(val.hombres || '0', 10) + parseInt(val.mujeres || '0', 10);
-        }
-      });
-    }
-
-    if (totalBeneficiariosSum === 0) {
-      return notifyWithSound('Debes registrar al menos una persona beneficiada en los recuadros.', 'warning');
-    }
 
     if (actividadEnEdicion.es_colaborativa && !actividadEnEdicion.colaborador_id) {
       return notifyWithSound('Selecciona el embajador colaborador de la lista.', 'warning');
@@ -374,8 +344,16 @@ export default function EmbajaReporte() {
       let actId = actividadEnEdicion.id;
       const esNueva = String(actId).startsWith('act-');
 
+      let totalBeneficiariosSum = 0;
+      if (actividadEnEdicion.beneficiarios) {
+        Object.entries(actividadEnEdicion.beneficiarios).forEach(([catIdStr, val]: [string, any]) => {
+          if (Number(catIdStr) !== 99) {
+            totalBeneficiariosSum += parseInt(val.hombres || '0', 10) + parseInt(val.mujeres || '0', 10);
+          }
+        });
+      }
+
       if (actividadEnEdicion.es_propia) {
-        
         const actividadData = {
           nombre: actividadEnEdicion.nombre,
           fecha_evento: actividadEnEdicion.fecha_evento,
@@ -424,7 +402,6 @@ export default function EmbajaReporte() {
           }
         }
 
-        // Beneficiarios
         if (actividadEnEdicion.beneficiarios) {
           for (const [catIdStr, valores] of Object.entries(actividadEnEdicion.beneficiarios)) {
             const catId = Number(catIdStr);
@@ -442,7 +419,6 @@ export default function EmbajaReporte() {
           }
         }
 
-        // Acción
         await supabase.from('actividad_acciones').delete().eq('actividad_id', actId);
         if (actividadEnEdicion.tipo_actividad) {
           const tipoObj = accionesDB.find(a => a.nombre === actividadEnEdicion.tipo_actividad);
@@ -453,7 +429,6 @@ export default function EmbajaReporte() {
           }
         }
 
-        // Sostenibilidad & ODS
         const areasSeleccionadas = new Set<number>();
         actividadEnEdicion.ods_seleccionados?.forEach((odsId: number) => {
           const odsObj = odsDB.find(o => o.id === odsId);
@@ -486,10 +461,9 @@ export default function EmbajaReporte() {
         estado_validacion: 'Pendiente', fecha_agregado: new Date().toISOString()
       }, { onConflict: 'reporte_id,actividad_id' });
 
-      // LÓGICA DE EVIDENCIAS (STORAGE PRIVADO + BD)
+      // EVIDENCIAS
       if (actividadEnEdicion.evidencias && actividadEnEdicion.evidencias.length > 0) {
         for (const ev of actividadEnEdicion.evidencias) {
-          
           if (ev.file) {
             const fileExt = ev.file.name.split('.').pop();
             const fileName = `${actId}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
@@ -499,10 +473,7 @@ export default function EmbajaReporte() {
               .from('evidencias') 
               .upload(filePath, ev.file);
 
-            if (uploadError) {
-              console.error("Error subiendo a Storage:", uploadError);
-              throw new Error("No se pudo subir una de las imágenes al Storage.");
-            }
+            if (uploadError) throw new Error("No se pudo subir una de las imágenes al Storage.");
 
             const { error: dbError } = await supabase.from('evidencias').insert({
               actividad_id: actId,
@@ -510,20 +481,17 @@ export default function EmbajaReporte() {
               usuario_id: currentUserId
             });
 
-            if (dbError) {
-              console.error("Error guardando registro en SQL evidencias:", dbError);
-              throw new Error(`Error en la tabla evidencias: ${dbError.message}`);
-            }
+            if (dbError) throw new Error(`Error en la tabla evidencias: ${dbError.message}`);
           }
         }
       }
-      notifyWithSound('Actividad anexada al reporte exitosamente', 'success');
+      notifyWithSound('Progreso guardado exitosamente', 'success');
       setActividadEnEdicion(null);
       seleccionarReporte(reporteSeleccionado);
       
     } catch (error: any) {
       console.error(error);
-      notifyWithSound('Error al guardar la actividad: ' + error.message, 'error');
+      notifyWithSound('Error al guardar: ' + error.message, 'error');
     } finally {
       setGuardando(false);
     }
@@ -545,8 +513,53 @@ export default function EmbajaReporte() {
   };
 
   // ==========================================
-  // ENVIAR REPORTE MENSUAL
+  // VALIDAR ANTES DE ENVIAR REPORTE
   // ==========================================
+  const validarReporteParaEnvio = () => {
+    if (actividades.length === 0) return { listo: false, msg: 'No tienes actividades registradas en este mes.' };
+
+    for (let act of actividades) {
+      // 1. Todas las actividades (propias y compartidas) deben tener al menos 1 foto
+      if (!act.evidencias || act.evidencias.length === 0) {
+        return { listo: false, msg: `La actividad "${act.nombre}" requiere al menos 1 fotografía de evidencia.` };
+      }
+
+      // 2. Si es propia, debe tener toda la información llena
+      if (act.es_propia) {
+        if (!act.nombre || !act.tipo_actividad || !act.fecha_evento || !act.hora_inicio || !act.hora_fin ||
+            !act.lugar || !act.domicilio?.municipio || !act.domicilio?.colonia || !act.domicilio?.calle ||
+            !act.rango_edad || !act.descripcion) {
+          return { listo: false, msg: `La actividad "${act.nombre}" tiene campos de información vacíos.` };
+        }
+
+        if (!act.ods_seleccionados || act.ods_seleccionados.length === 0) {
+          return { listo: false, msg: `La actividad "${act.nombre}" debe tener al menos 1 ODS seleccionado.` };
+        }
+
+        // 3. Validar beneficiarios (mínimo 1)
+        let totalBen = 0;
+        if (act.beneficiarios) {
+          Object.values(act.beneficiarios).forEach((b: any) => {
+            totalBen += parseInt(b.hombres || '0', 10) + parseInt(b.mujeres || '0', 10);
+          });
+        }
+        if (totalBen === 0) {
+          return { listo: false, msg: `La actividad "${act.nombre}" debe tener al menos una persona beneficiada registrada.` };
+        }
+      }
+    }
+    return { listo: true, msg: 'Todo correcto' };
+  };
+
+  const handleIntentarEnviar = () => {
+    const validacion = validarReporteParaEnvio();
+    if (!validacion.listo) {
+      notifyWithSound(validacion.msg, 'error');
+      return;
+    }
+    setShowSendDialog(true);
+  };
+
   const handleEnviarReporte = async () => {
     if (!reporteSeleccionado) return;
     setIsSending(true);
@@ -748,7 +761,6 @@ export default function EmbajaReporte() {
                     </div>
                   </div>
 
-                  {/* BLOQUE COLABORACIÓN */}
                   {esPropietario && String(actividadEnEdicion.id || '').startsWith('act-') && (
                     <div className="bg-orange-50/50 p-4 border border-orange-100 rounded-xl mt-4">
                       <label className="flex items-center gap-2 cursor-pointer mb-2">
@@ -795,7 +807,7 @@ export default function EmbajaReporte() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <div className="space-y-4">
                     <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2 flex justify-between">
-                      Beneficiarios <span className="text-red-500 ml-1 text-xs normal-case tracking-normal font-normal">* Al menos un recuadro debe tener valor</span>
+                      Beneficiarios
                     </h4>
                     {categoriasDB.map(cat => {
                       const esFilaTotal = cat.id === 99;
@@ -886,7 +898,13 @@ export default function EmbajaReporte() {
                       </label>
                     )}
                   </div>
-                  {(actividadEnEdicion.evidencias?.length || 0) === 0 && <p className="text-xs text-red-500 font-bold mt-1">Debes subir al menos 1 fotografía de evidencia.</p>}
+                  
+                  {/* MEJORA: Aviso amigable (no bloqueante) si faltan evidencias */}
+                  {(actividadEnEdicion.evidencias?.length || 0) === 0 && (
+                    <p className="text-xs text-orange-500 font-bold mt-1">
+                      Recuerda subir al menos 1 fotografía antes de enviar tu reporte final.
+                    </p>
+                  )}
                 </div>
 
               </form>
@@ -896,8 +914,9 @@ export default function EmbajaReporte() {
               <button type="button" onClick={() => setActividadEnEdicion(null)} className="flex-1 py-3 rounded-xl font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-100 transition-colors">
                 Cancelar
               </button>
-              <button form="form-edicion" type="submit" disabled={guardando || (actividadEnEdicion.evidencias?.length || 0) === 0} className="flex-1 py-3 rounded-xl font-bold text-white bg-[#00689D] hover:bg-[#00527A] disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-md">
-                {guardando ? <><Loader2 className="animate-spin" size={18}/> Guardando...</> : <><Save size={20}/> Guardar {esPropietario ? 'Actividad' : 'Evidencias'}</>}
+              {/* MEJORA: El botón ya NO se bloquea si hay 0 evidencias */}
+              <button form="form-edicion" type="submit" disabled={guardando} className="flex-1 py-3 rounded-xl font-bold text-white bg-[#00689D] hover:bg-[#00527A] disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-md transition-colors">
+                {guardando ? <><Loader2 className="animate-spin" size={18}/> Guardando...</> : <><Save size={20}/> Guardar Avance</>}
               </button>
             </div>
 
@@ -944,8 +963,10 @@ export default function EmbajaReporte() {
                 <h2 className="text-lg font-black text-gray-800">Reporte del mes de {reporteSeleccionado.nombre_mes}</h2>
                 <p className="text-xs text-gray-600 mt-1">Gestiona las actividades de este periodo</p>
               </div>
+              
+              {/* MEJORA: Al hacer clic primero valida con handleIntentarEnviar() */}
               <button 
-                onClick={() => setShowSendDialog(true)}
+                onClick={handleIntentarEnviar}
                 disabled={reporteSeleccionado.estado === 'Enviado' || actividades.length === 0}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-colors ${reporteSeleccionado.estado === 'Enviado' || actividades.length === 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#00689D] text-white hover:bg-[#00527A] shadow-md'}`}
               >
@@ -993,16 +1014,14 @@ export default function EmbajaReporte() {
                             {act.nombre} {!act.es_propia && <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">Compartida</span>}
                           </h4>
                         </div>
-                        <p className="text-xs text-gray-600 ml-11 space-x-2">
-                          <span>{act.fecha_evento?.split('T')[0]}</span>
+                        <p className="text-xs text-gray-600 ml-11 flex flex-wrap items-center gap-2 mt-1">
+                          <span className="capitalize">{formatearFechaVisual(act.fecha_evento)}</span>
                           <span>•</span>
                           <span>{act.tipo_actividad || 'Actividad Genérica'}</span>
-                          {act.evidencias?.length > 0 && (
-                            <>
-                              <span>•</span>
-                              <span className="text-blue-600 font-semibold">{act.evidencias.length}/4 evidencias subidas</span>
-                            </>
-                          )}
+                          <span>•</span>
+                          <span className={`font-semibold ${(act.evidencias?.length || 0) > 0 ? 'text-blue-600' : 'text-red-500'}`}>
+                            {act.evidencias?.length || 0}/4 evidencias subidas
+                          </span>
                         </p>
                       </div>
                     </div>
