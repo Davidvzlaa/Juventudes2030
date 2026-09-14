@@ -82,6 +82,7 @@ export default function EmbajadorInicio() {
 
     return () => window.removeEventListener('scroll', calcularEspacio);
   }, []);
+  
   // Funciones de fecha seguras
   const getTodayString = () => {
     const today = new Date();
@@ -131,7 +132,6 @@ export default function EmbajadorInicio() {
       const miMunicipioId = embajadorData?.municipio_id;
 
       if (miMunicipioId) {
-        // SOLUCIÓN: Cambiamos .single() por .maybeSingle() 👇
         const { data: municipio } = await supabase.from('municipios').select('nombre').eq('id', miMunicipioId).maybeSingle();
         setMunicipioNombre(municipio?.nombre || 'Municipio no definido');
       }
@@ -156,7 +156,7 @@ export default function EmbajadorInicio() {
       if (miMunicipioId) {
         const hoyLocal = getTodayString();
         
-        // Traemos TODAS las actividades próximas del municipio con datos completos para el Drawer
+        // Traemos TODAS las actividades próximas del municipio
         const { data: upcomingActs } = await supabase
           .from('actividades')
           .select(`
@@ -177,8 +177,16 @@ export default function EmbajadorInicio() {
           const communityActs: Actividad[] = [];
 
           upcomingActs.forEach((act: any) => {
-            // Excluimos borradores que no sean nuestros
-            if (act.estado === 'Borrador' && act.creado_por_usuario_id !== usuarioDatos.id) return;
+            // Evaluamos si el estado es nulo (asumimos Programada por defecto) o si viene explícito
+            const estadoActividad = act.estado || 'Programada';
+
+            // ========================================================
+            // NUEVO FILTRO: Solo permitimos "Programada" (o "Publicado")
+            // Esto descarta automáticamente "Cancelada" y "Borrador"
+            // ========================================================
+            if (estadoActividad !== 'Programada' && estadoActividad !== 'Publicado') {
+              return; // Ignora la actividad y pasa a la siguiente
+            }
 
             const soyCreador = act.creado_por_usuario_id === usuarioDatos.id;
             const soyAsistente = act.actividad_asistentes?.some((a: any) => a.usuario_id === usuarioDatos.id);
@@ -226,7 +234,7 @@ export default function EmbajadorInicio() {
     try {
       const { error } = await supabase.from('actividad_asistentes').insert({ actividad_id: eventoSeleccionado.id, usuario_id: usuarioDatos.id });
       if (error) throw error;
-      await fetchDashboardData(); // Esto actualizará el Drawer y pasará la actividad a "Mi Agenda" al instante.
+      await fetchDashboardData(); 
       notifyWithSound('¡Te has unido a la actividad con éxito!', 'success');
     } catch (error: any) { 
       notifyWithSound("Error al unirte: " + error.message, 'error'); 
@@ -241,7 +249,6 @@ export default function EmbajadorInicio() {
   };
 
   const handleEliminar = async (id: number) => {
-    // window.confirm se mantiene porque es un dialog de confirmación de doble paso (prevenir clics accidentales)
     if (!window.confirm('¿Estás seguro de eliminar permanentemente esta actividad?')) return;
     try {
       const { error } = await supabase.from('actividades').update({ fecha_eliminacion: new Date().toISOString() }).eq('id', id);
@@ -255,7 +262,6 @@ export default function EmbajadorInicio() {
   };
 
   const handleCancelarEvento = async (id: number) => {
-    // window.confirm se mantiene para confirmar la cancelación (acción destructiva)
     if (!window.confirm('¿Deseas marcar esta actividad como Cancelada?')) return;
     try {
       const { error } = await supabase.from('actividades').update({ estado: 'Cancelada' }).eq('id', id);
@@ -266,6 +272,7 @@ export default function EmbajadorInicio() {
       notifyWithSound('Error al cancelar la actividad.', 'error'); 
     }
   };
+
   // Bloquear el scroll del cuerpo de la página cuando el panel está abierto
   useEffect(() => {
     if (isSidebarOpen) {
@@ -273,7 +280,6 @@ export default function EmbajadorInicio() {
     } else {
       document.body.style.overflow = 'auto';
     }
-    // Limpieza de seguridad si el componente se desmonta
     return () => { document.body.style.overflow = 'auto'; };
   }, [isSidebarOpen]);
   
@@ -292,7 +298,7 @@ export default function EmbajadorInicio() {
       {/* ==========================================
           HEADER / SALUDO DINÁMICO
       ========================================== */}
-      <div className="bg-linear-to-r from-[#00689D] to-[#004A70] rounded-3xl p-8 md:p-10 shadow-lg relative overflow-hidden text-white">
+      <div className="bg-gradient-to-r from-[#00689D] to-[#004A70] rounded-3xl p-8 md:p-10 shadow-lg relative overflow-hidden text-white">
         <div className="absolute top-0 right-0 -mt-10 -mr-10 opacity-10 pointer-events-none"><Globe size={300} /></div>
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
@@ -303,7 +309,7 @@ export default function EmbajadorInicio() {
             <p className="text-blue-100 text-lg max-w-2xl font-medium">Es un gran día para transformar tu entorno. Aquí tienes el resumen de tu impacto en la Agenda 2030.</p>
           </div>
           <div className="shrink-0">
-            <Link to="/embajador/actividades" className="bg-white text-[#00689D] px-6 py-3 rounded-full font-bold shadow-md hover:shadow-lg hover:bg-gray-50 transition-all flex items-center gap-2">
+            <Link to="/embajador/calendario" className="bg-white text-[#00689D] px-6 py-3 rounded-full font-bold shadow-md hover:shadow-lg hover:bg-gray-50 transition-all flex items-center gap-2">
               <Activity size={18} /> Registrar Actividad
             </Link>
           </div>
@@ -371,7 +377,6 @@ export default function EmbajadorInicio() {
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
                           <h4 className="font-bold text-gray-900 group-hover:text-[#00689D] transition-colors line-clamp-1 pr-2">{act.nombre}</h4>
-                          {act.estado === 'Borrador' && <span className="text-[9px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-bold">Borrador</span>}
                         </div>
                         <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-gray-500 font-medium">
                           <span className="flex items-center gap-1"><Clock size={14} /> {act.hora_inicio?.slice(0,5) || 'Por definir'}</span>
@@ -433,16 +438,14 @@ export default function EmbajadorInicio() {
       {/* ==========================================
           DRAWER LATERAL (Detalle Completo)
       ========================================== */}
-      {/* Fondo Oscuro (Overlay) */}
       <div 
         className={`fixed left-0 w-full bg-gray-900/40 backdrop-blur-sm z-40 transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} 
         style={{ top: `${espacioSuperior}px`, height: `calc(100vh - ${espacioSuperior}px)` }}
         onClick={() => setIsSidebarOpen(false)} 
       />
       
-      {/* Panel Lateral (Drawer) */}
       <div 
-        className={`fixed right-0 z-50 w-full sm:w-125 bg-white shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed right-0 z-50 w-full sm:w-[500px] bg-white shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'}`}
         style={{ top: `${espacioSuperior}px`, height: `calc(100vh - ${espacioSuperior}px)` }}
       >
         {eventoSeleccionado && (
