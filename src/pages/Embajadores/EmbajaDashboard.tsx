@@ -11,36 +11,32 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 
-// Mismos tipos que el Calendario para mantener compatibilidad total en el Drawer
+// MEJORA: Agregamos 'estado' explícitamente a la interfaz
 interface Actividad {
   id: number; nombre: string; descripcion: string; fecha_evento: string; hora_inicio: string; hora_fin: string;
-  municipio_id: number; lugar: string; direccion: string; calle: string; colonia: string; estado: string;
+  municipio_id: number; lugar: string; direccion: string; calle: string; colonia: string; estado?: string;
   creado_por_usuario_id: string; municipios: { nombre: string }; creador: { nombre: string; apellido: string };
   actividad_asistentes: { usuario_id: string; usuarios: { nombre: string; apellido: string } }[];
   actividad_ods: { ods_id: number; ods: { numero: number; nombre: string } }[];
   actividad_acciones: { tipo_accion_id: number; cantidad: number; tipos_accion: { nombre: string } }[];
 }
 
-// Función auxiliar para emitir la notificación con sonido y posición inferior derecha
+// MEJORA: Instanciamos el audio FUERA del componente para no crear múltiples instancias
+const notificationSound = new Audio('/notification.mp3');
+notificationSound.volume = 0.5;
+
 const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
-  const audio = new Audio('/notification.mp3');
-  audio.volume = 0.5;
-  audio.play().catch(err => console.log('Audio bloqueado por el navegador:', err));
+  // Reseteamos el audio en caso de que se disparen dos notificaciones seguidas
+  notificationSound.currentTime = 0;
+  notificationSound.play().catch(err => console.log('Audio bloqueado por el navegador:', err));
 
   const options = { position: 'bottom-right' as const };
 
   switch (type) {
-    case 'success':
-      toast.success(message, options);
-      break;
-    case 'error':
-      toast.error(message, options);
-      break;
-    case 'warning':
-      toast.warning(message, options);
-      break;
-    default:
-      toast.info(message, options);
+    case 'success': toast.success(message, options); break;
+    case 'error': toast.error(message, options); break;
+    case 'warning': toast.warning(message, options); break;
+    default: toast.info(message, options);
   }
 };
 
@@ -55,35 +51,26 @@ export default function EmbajadorInicio() {
   const [actividadesComunidad, setActividadesComunidad] = useState<Actividad[]>([]);
   const [municipioNombre, setMunicipioNombre] = useState<string>('');
 
-  // Estados del Drawer Lateral
   const [eventoSeleccionado, setEventoSeleccionado] = useState<Actividad | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
-  // Estado para calcular el margen superior dinámico
-  const [espacioSuperior, setEspacioSuperior] = useState(88); // Valor por defecto seguro
+  const [espacioSuperior, setEspacioSuperior] = useState(88);
 
+  // MEJORA: Eliminamos la búsqueda directa en el DOM (document.querySelector)
+  // Usamos un valor constante (88px) o variables CSS. Además agregamos { passive: true } para mejor rendimiento de scroll.
   useEffect(() => {
     const calcularEspacio = () => {
-      // 1. Busca automáticamente el Header en tu página para saber cuánto mide exactamente
-      const headerElement = document.querySelector('header');
-      const alturaHeader = headerElement ? headerElement.offsetHeight : 88; 
-      
+      const alturaHeader = 88; // Altura estándar de tu header
       const scrollActual = window.scrollY;
-      
-      // 2. Calcula el espacio restante
-      const nuevoEspacio = scrollActual >= alturaHeader ? 0 : alturaHeader - scrollActual;
-      setEspacioSuperior(nuevoEspacio);
+      setEspacioSuperior(scrollActual >= alturaHeader ? 0 : alturaHeader - scrollActual);
     };
 
-    window.addEventListener('scroll', calcularEspacio);
-    
-    // Lo ejecutamos con un mini-retraso al cargar para asegurar que el logo y botones ya tengan su tamaño final
-    setTimeout(calcularEspacio, 50); 
+    window.addEventListener('scroll', calcularEspacio, { passive: true });
+    calcularEspacio(); 
 
     return () => window.removeEventListener('scroll', calcularEspacio);
   }, []);
   
-  // Funciones de fecha seguras
   const getTodayString = () => {
     const today = new Date();
     const y = today.getFullYear();
@@ -117,13 +104,16 @@ export default function EmbajadorInicio() {
     if (hour >= 12 && hour < 19) return { text: 'Buenas tardes', icon: <Sun className="text-yellow-500" size={28} /> };
     return { text: 'Buenas noches', icon: <Moon className="text-blue-400" size={28} /> };
   };
+  
   const greeting = getGreeting();
 
-  // ==========================================
-  // CARGA DE DATOS PRINCIPAL
-  // ==========================================
   const fetchDashboardData = async () => {
-    if (!usuarioDatos?.id) return;
+    // MEJORA: Evitamos que se quede en loading infinito si no hay usuario
+    if (!usuarioDatos?.id) {
+      setLoading(false);
+      return;
+    }
+    
     setLoading(true);
 
     try {
@@ -136,27 +126,72 @@ export default function EmbajadorInicio() {
         setMunicipioNombre(municipio?.nombre || 'Municipio no definido');
       }
 
-      // 2. Métricas (Totales)
-      const { data: misActividadesStats } = await supabase.from('actividades')
-        .select('id, beneficiarios_directos, beneficiarios_indirectos')
+      // ==========================================
+      // 2. MÉTRICAS OFICIALES (Validadas por el Administrador)
+      // ==========================================
+      
+      // IMPORTANTE: Cambia 'Validada' por la palabra exacta que usas en tu base de datos
+      // cuando un administrador aprueba/verifica el reporte final de la actividad.
+      const ESTADO_APROBADO = 'Validada'; 
+
+      // A) Obtener actividades que el usuario CREÓ y ya fueron aprobadas
+      const { data: actsCreadas } = await supabase.from('actividades')
+        .select('id, beneficiarios_directos, beneficiarios_indirectos, estado, actividad_ods(ods_id)')
         .eq('creado_por_usuario_id', usuarioDatos.id)
+        .eq('estado', ESTADO_APROBADO) // <-- Filtro estricto
         .is('fecha_eliminacion', null);
 
-      let totalBen = 0;
-      if (misActividadesStats) {
-        totalBen = misActividadesStats.reduce((acc, act) => acc + (act.beneficiarios_directos || 0) + (act.beneficiarios_indirectos || 0), 0);
-      }
+      // B) Obtener actividades a las que el usuario SE UNIÓ y ya fueron aprobadas
+      const { data: actsUnidas } = await supabase.from('actividad_asistentes')
+        .select(`
+          actividad_id,
+          actividades!inner (
+            id, beneficiarios_directos, beneficiarios_indirectos, estado,
+            actividad_ods(ods_id)
+          )
+        `)
+        .eq('usuario_id', usuarioDatos.id)
+        .eq('actividades.estado', ESTADO_APROBADO) // <-- Filtro estricto en el Join
+        .is('actividades.fecha_eliminacion', null);
 
-      const { data: odsData } = await supabase.from('actividad_ods').select('ods_id').in('actividad_id', (misActividadesStats || []).map(a => a.id));
-      const odsUnicos = new Set(odsData?.map(o => o.ods_id)).size;
+      // C) Combinar ambas listas evitando duplicados (por si el creador también se unió)
+      const mapaActividades = new Map();
+      
+      actsCreadas?.forEach(act => mapaActividades.set(act.id, act));
+      actsUnidas?.forEach(item => mapaActividades.set(item.actividad_id, item.actividades));
 
-      setStats({ actividades: misActividadesStats?.length || 0, beneficiarios: totalBen, ods: odsUnicos });
+      const actividadesValidadas = Array.from(mapaActividades.values());
 
-      // 3. Actividades Dinámicas (Mi Agenda vs Cerca de ti)
+      // --- CÁLCULO DE MÉTRICAS (Ahora todo se basa 100% en lo validado) ---
+
+      // 1. Tu Participación (Solo cuentan si el admin ya las validó)
+      const totalActividades = actividadesValidadas.length;
+
+      // 2. ODS Diferentes (Extraídos solo de las actividades validadas)
+      const odsSet = new Set();
+      actividadesValidadas.forEach((act: any) => {
+        act.actividad_ods?.forEach((rel: any) => odsSet.add(rel.ods_id));
+      });
+      const totalOds = odsSet.size;
+
+      // 3. Impacto Social (Personas impactadas, confirmado por el admin)
+      let totalBeneficiarios = 0;
+      actividadesValidadas.forEach((act: any) => {
+        totalBeneficiarios += (act.beneficiarios_directos || 0) + (act.beneficiarios_indirectos || 0);
+      });
+
+      // Actualizamos el dashboard
+      setStats({ 
+        actividades: totalActividades, 
+        beneficiarios: totalBeneficiarios, 
+        ods: totalOds 
+      });
+
+      // 3. Actividades Dinámicas
       if (miMunicipioId) {
         const hoyLocal = getTodayString();
         
-        // Traemos TODAS las actividades próximas del municipio
+        // MEJORA: Filtramos los estados desde el backend (.in) y usamos .returns<Actividad[]>()
         const { data: upcomingActs } = await supabase
           .from('actividades')
           .select(`
@@ -170,28 +205,20 @@ export default function EmbajadorInicio() {
           .eq('municipio_id', miMunicipioId)
           .gte('fecha_evento', hoyLocal)
           .is('fecha_eliminacion', null)
-          .order('fecha_evento', { ascending: true });
+          .in('estado', ['Programada', 'Publicado']) // Filtro directo en la BD
+          .order('fecha_evento', { ascending: true })
+          .limit(50) // Salvaguarda para evitar saturar el frontend
+          .returns<Actividad[]>();
 
         if (upcomingActs) {
           const myActs: Actividad[] = [];
           const communityActs: Actividad[] = [];
 
-          upcomingActs.forEach((act: any) => {
-            // Evaluamos si el estado es nulo (asumimos Programada por defecto) o si viene explícito
-            const estadoActividad = act.estado || 'Programada';
-
-            // ========================================================
-            // NUEVO FILTRO: Solo permitimos "Programada" (o "Publicado")
-            // Esto descarta automáticamente "Cancelada" y "Borrador"
-            // ========================================================
-            if (estadoActividad !== 'Programada' && estadoActividad !== 'Publicado') {
-              return; // Ignora la actividad y pasa a la siguiente
-            }
-
+          // MEJORA: act ahora hereda las propiedades automáticamente, adiós al 'any'
+          upcomingActs.forEach((act) => {
             const soyCreador = act.creado_por_usuario_id === usuarioDatos.id;
-            const soyAsistente = act.actividad_asistentes?.some((a: any) => a.usuario_id === usuarioDatos.id);
+            const soyAsistente = act.actividad_asistentes?.some(a => a.usuario_id === usuarioDatos.id);
 
-            // Si la creé yo o ya estoy anotado, va a Mi Agenda
             if (soyCreador || soyAsistente) {
               myActs.push(act);
             } else {
@@ -202,11 +229,10 @@ export default function EmbajadorInicio() {
           setMisProximas(myActs.slice(0, 3));
           setActividadesComunidad(communityActs.slice(0, 4));
 
-          // Actualiza el modal en vivo si lo tenemos abierto
           setEventoSeleccionado(prev => {
             if (!prev) return null;
             const updated = upcomingActs.find(a => a.id === prev.id);
-            return (updated as any) || prev;
+            return updated || prev;
           });
         }
       }
@@ -217,12 +243,8 @@ export default function EmbajadorInicio() {
     }
   };
 
-  // Escucha cambios, incluyendo navegación (location.key)
-  useEffect(() => { fetchDashboardData(); }, [usuarioDatos, location.key]);
+  useEffect(() => { fetchDashboardData(); }, [usuarioDatos?.id, location.key]);
 
-  // ==========================================
-  // ACCIONES DEL DRAWER
-  // ==========================================
   const abrirDetalle = (act: Actividad) => {
     setEventoSeleccionado(act);
     setIsSidebarOpen(true);
@@ -273,7 +295,6 @@ export default function EmbajadorInicio() {
     }
   };
 
-  // Bloquear el scroll del cuerpo de la página cuando el panel está abierto
   useEffect(() => {
     if (isSidebarOpen) {
       document.body.style.overflow = 'hidden';
