@@ -3,11 +3,15 @@ import { supabase } from '../../lib/supabase';
 import { createClient } from '@supabase/supabase-js'; 
 import { 
   Users, PlusCircle, Search, Edit2, Trash2, X, Save, 
-  Loader2, UploadCloud, MapPin, Calendar, Mail, Phone, Shield, Folder, Lock
+  Loader2, UploadCloud, MapPin, Calendar, Mail, Phone, Shield, Folder, Lock, Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-// Importaciones de shadcn/ui (Ajusta la ruta según tu proyecto)
+// Importaciones de date-fns para un manejo de fechas robusto y amigable
+import { differenceInYears, parseISO, format, formatDistanceToNow } from 'date-fns';
+import { es } from 'date-fns/locale';
+
+// Importaciones de shadcn/ui
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,22 +23,52 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+// ==========================================
+// INTERFACES (TypeScript estricto)
+// ==========================================
 interface Rol { id: number; nombre: string; }
 interface Municipio { id: number; nombre: string; }
 interface Proyecto { id: number; nombre: string; }
+
+interface EmbajadorInfo {
+  municipio_id: number;
+  proyecto_social_id: number | null;
+  municipios?: Municipio;
+  proyectos_sociales?: Proyecto;
+}
+
+interface ActividadInfo {
+  id: number;
+}
+
+interface Usuario {
+  id: string;
+  nombre: string;
+  apellido: string;
+  correo: string;
+  telefono: string | null;
+  fecha_nacimiento: string | null;
+  activo: boolean;
+  ultimo_acceso: string | null; // <-- NUEVA COLUMNA
+  roles: Rol | null;
+  embajadores?: EmbajadorInfo[] | EmbajadorInfo;
+  actividades?: ActividadInfo[];
+}
 
 // Obtenemos las credenciales de entorno
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 // ==========================================
-// CONSTANTE: CONTRASEÑA POR DEFECTO
+// CONSTANTES GLOBALES
 // ==========================================
 const PASSWORD_TEMPORAL_DEFAULT = 'Juventudes2030*26';
+const ROL_EMBAJADOR = 'Embajador';
+const ROL_ADMIN = 'Administrador';
 
 export default function AdminUsuariosDinamico() {
   const [showForm, setShowForm] = useState(false);
-  const [usuariosList, setUsuariosList] = useState<any[]>([]);
+  const [usuariosList, setUsuariosList] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -48,7 +82,7 @@ export default function AdminUsuariosDinamico() {
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
 
   // Filtros
-  const [filtroRol, setFiltroRol] = useState<'Todos' | 'Administrador' | 'Embajador'>('Todos');
+  const [filtroRol, setFiltroRol] = useState<'Todos' | typeof ROL_ADMIN | typeof ROL_EMBAJADOR>('Todos');
   const [filtroMunicipio, setFiltroMunicipio] = useState<string>('Todos');
   const [filtroMesCumple, setFiltroMesCumple] = useState<string>('Todos'); 
 
@@ -77,20 +111,33 @@ export default function AdminUsuariosDinamico() {
     { num: '10', nombre: 'Octubre' }, { num: '11', nombre: 'Noviembre' }, { num: '12', nombre: 'Diciembre' }
   ];
 
+  // Cálculo seguro usando date-fns
   const calcularEdad = (fechaNacimiento: string | null) => {
     if (!fechaNacimiento) return 'N/A';
-    const hoy = new Date();
-    const cumpleanos = new Date(fechaNacimiento);
-    let edad = hoy.getFullYear() - cumpleanos.getFullYear();
-    const mes = hoy.getMonth() - cumpleanos.getMonth();
-    if (mes < 0 || (mes === 0 && hoy.getDate() < cumpleanos.getDate())) edad--;
-    return edad;
+    try {
+      return differenceInYears(new Date(), parseISO(fechaNacimiento));
+    } catch {
+      return 'N/A';
+    }
   };
 
   const getMesDia = (fecha: string | null) => {
     if (!fecha) return '99-99'; 
-    const [, mes, dia] = fecha.split('-');
-    return `${mes}-${dia}`;
+    try {
+      return format(parseISO(fecha), 'MM-dd');
+    } catch {
+      return '99-99';
+    }
+  };
+
+  // Función amigable para el último acceso
+  const renderUltimoAcceso = (fechaStr: string | null) => {
+    if (!fechaStr) return <span className="text-gray-400 italic">Nunca</span>;
+    try {
+      return `Hace ${formatDistanceToNow(parseISO(fechaStr), { locale: es })}`;
+    } catch {
+      return 'Desconocido';
+    }
   };
 
   const processLogo = (file: File) => {
@@ -110,10 +157,11 @@ export default function AdminUsuariosDinamico() {
     if (resMun.data) setMunicipios(resMun.data);
     if (resProy.data) setProyectos(resProy.data);
 
+    // Consulta principal agregando ultimo_acceso
     const { data: usuariosData, error: usrErr } = await supabase
       .from('usuarios')
       .select(`
-        id, nombre, apellido, correo, telefono, fecha_nacimiento, activo,
+        id, nombre, apellido, correo, telefono, fecha_nacimiento, activo, ultimo_acceso,
         roles(id, nombre),
         embajadores(
           municipio_id, proyecto_social_id,
@@ -123,13 +171,15 @@ export default function AdminUsuariosDinamico() {
         actividades!creado_por_usuario_id(id)
       `);
 
-    if (!usrErr && usuariosData) setUsuariosList(usuariosData);
+    if (!usrErr && usuariosData) {
+      setUsuariosList(usuariosData as unknown as Usuario[]);
+    }
     setLoading(false);
   };
 
   useEffect(() => { fetchData(); }, []);
 
-  const handleEdit = (u: any) => {
+  const handleEdit = (u: Usuario) => {
     setEditId(u.id);
     setFormUsuario({
       nombre: u.nombre || '', apellido: u.apellido || '', correo: u.correo || '',
@@ -137,7 +187,7 @@ export default function AdminUsuariosDinamico() {
       rol_id: u.roles?.id || 0, activo: u.activo, visible: true
     });
 
-    const esEmbajadorEditar = u.roles?.nombre === 'Embajador';
+    const esEmbajadorEditar = u.roles?.nombre === ROL_EMBAJADOR;
     const emb = Array.isArray(u.embajadores) ? u.embajadores[0] : u.embajadores;
 
     if (esEmbajadorEditar && emb) {
@@ -159,9 +209,6 @@ export default function AdminUsuariosDinamico() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // ==========================================
-  // FLUJO DE ELIMINACIÓN CON ALERT DIALOG
-  // ==========================================
   const confirmDelete = (id: string) => {
     setUserToDelete(id);
     setIsDeleteDialogOpen(true);
@@ -173,7 +220,6 @@ export default function AdminUsuariosDinamico() {
     
     try {
       const { error } = await supabase.from('usuarios').delete().eq('id', userToDelete);
-      
       if (error) throw error;
       
       toast.success("Usuario eliminado exitosamente.");
@@ -221,9 +267,9 @@ export default function AdminUsuariosDinamico() {
   usuariosFiltrados.sort((a, b) => getMesDia(a.fecha_nacimiento).localeCompare(getMesDia(b.fecha_nacimiento)));
 
   const rolSeleccionado = roles.find(r => r.id === formUsuario.rol_id);
-  const esEmbajador = rolSeleccionado?.nombre === 'Embajador';
+  const esEmbajador = rolSeleccionado?.nombre === ROL_EMBAJADOR;
 
-  const mostrarColumnasEmbajador = filtroRol !== 'Administrador';
+  const mostrarColumnasEmbajador = filtroRol !== ROL_ADMIN;
 
   // ==========================================
   // GUARDAR (CREAR EN AUTH + PERFIL)
@@ -269,19 +315,34 @@ export default function AdminUsuariosDinamico() {
 
       if (esEmbajador && usuarioId) {
         let proyectoFinalId = null;
+        
         if (tieneProyecto) {
           if (crearNuevoProyecto) {
             if (!formProyecto.nombre) throw new Error("Escribe el nombre del proyecto nuevo.");
+            
             let finalLogoUrl = null;
             if (logoFile) {
-              const fileExt = logoFile.name.split('.').pop();
-              const fileName = `logo_${Date.now()}.${fileExt}`;
-              await supabase.storage.from('imagenes').upload(fileName, logoFile);
+              const fileExt = logoFile.name.split('.').pop()?.toLowerCase() || 'png';
+              const uniqueFileName = typeof crypto !== 'undefined' && crypto.randomUUID 
+                                     ? crypto.randomUUID() 
+                                     : Date.now().toString(36) + Math.random().toString(36).substring(2);
+              const fileName = `logo_${uniqueFileName}.${fileExt}`;
+              
+              const { error: uploadError } = await supabase.storage.from('imagenes').upload(fileName, logoFile);
+              if (uploadError) throw uploadError;
+              
               finalLogoUrl = supabase.storage.from('imagenes').getPublicUrl(fileName).data.publicUrl;
             }
-            const { data: proyCreado, error: errProy } = await supabase.from('proyectos_sociales').insert([{ ...formProyecto, logo: finalLogoUrl, activo: true }]).select('id').single();
+
+            const { data: proyCreado, error: errProy } = await supabase
+              .from('proyectos_sociales')
+              .insert([{ ...formProyecto, logo: finalLogoUrl, activo: true }])
+              .select('id')
+              .single();
+              
             if (errProy) throw errProy;
             proyectoFinalId = proyCreado.id;
+
           } else {
             proyectoFinalId = proyectoSeleccionadoId > 0 ? proyectoSeleccionadoId : null;
           }
@@ -369,7 +430,6 @@ export default function AdminUsuariosDinamico() {
                   <input type="email" required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none transition-all" value={formUsuario.correo} onChange={e => setFormUsuario({...formUsuario, correo: e.target.value})} placeholder="correo@ejemplo.com" />
                 </div>
                 
-                {/* CAMPO DE CONTRASEÑA FIJO O DESHABILITADO */}
                 {!editId ? (
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-1 flex items-center gap-1"><Lock size={16}/> Contraseña Generada</label>
@@ -501,8 +561,8 @@ export default function AdminUsuariosDinamico() {
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
         <div className="flex space-x-2 mb-6 border-b border-gray-100 pb-5 overflow-x-auto scrollbar-hide">
           <button onClick={() => setFiltroRol('Todos')} className={`px-5 py-2.5 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${filtroRol === 'Todos' ? 'bg-[#00689D] text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Todos los Usuarios</button>
-          <button onClick={() => setFiltroRol('Administrador')} className={`px-5 py-2.5 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${filtroRol === 'Administrador' ? 'bg-purple-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Administradores</button>
-          <button onClick={() => setFiltroRol('Embajador')} className={`px-5 py-2.5 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${filtroRol === 'Embajador' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Embajadores</button>
+          <button onClick={() => setFiltroRol(ROL_ADMIN)} className={`px-5 py-2.5 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${filtroRol === ROL_ADMIN ? 'bg-purple-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Administradores</button>
+          <button onClick={() => setFiltroRol(ROL_EMBAJADOR)} className={`px-5 py-2.5 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${filtroRol === ROL_EMBAJADOR ? 'bg-green-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Embajadores</button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -512,7 +572,7 @@ export default function AdminUsuariosDinamico() {
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <MapPin size={16} className="text-gray-400" />
               </div>
-              <select className="w-full pl-9 p-3 border border-gray-300 rounded-lg bg-gray-50 focus:bg-white focus:ring-2 focus:ring-[#00689D] outline-none appearance-none disabled:opacity-50 transition-colors" value={filtroMunicipio} onChange={e => setFiltroMunicipio(e.target.value)} disabled={filtroRol === 'Administrador'}>
+              <select className="w-full pl-9 p-3 border border-gray-300 rounded-lg bg-gray-50 focus:bg-white focus:ring-2 focus:ring-[#00689D] outline-none appearance-none disabled:opacity-50 transition-colors" value={filtroMunicipio} onChange={e => setFiltroMunicipio(e.target.value)} disabled={filtroRol === ROL_ADMIN}>
                 <option value="Todos">Cualquier Municipio</option>
                 {municipios.map(m => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
               </select>
@@ -555,23 +615,27 @@ export default function AdminUsuariosDinamico() {
               <tr className="bg-white text-gray-500 border-b border-gray-200 text-xs uppercase tracking-wider">
                 <th className="p-4 font-bold text-center w-12">#</th>
                 <th className="p-4 font-bold whitespace-nowrap">Nombre Completo</th>
+                
+                {/* NUEVA COLUMNA: ÚLTIMA CONEXIÓN */}
+                
+                
                 <th className="p-4 font-bold text-center">Edad</th>
                 <th className="p-4 font-bold whitespace-nowrap">Fecha Nac.</th>
                 <th className="p-4 font-bold">Contacto</th>
                 <th className="p-4 font-bold">Rol</th>
                 
-                {/* COLUMNAS CONDICIONALES */}
                 {mostrarColumnasEmbajador && <th className="p-4 font-bold">Municipio / Proyecto</th>}
                 {mostrarColumnasEmbajador && <th className="p-4 font-bold text-center">Actividades</th>}
                 
                 <th className="p-4 font-bold text-center">Estado</th>
+                <th className="p-4 font-bold text-center whitespace-nowrap">Última Conexión</th>
                 <th className="p-4 font-bold text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 bg-white">
               {usuariosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={mostrarColumnasEmbajador ? 10 : 8} className="p-12 text-center text-gray-500">
+                  <td colSpan={mostrarColumnasEmbajador ? 11 : 9} className="p-12 text-center text-gray-500">
                     <Users className="mx-auto h-12 w-12 text-gray-300 mb-3" />
                     <p className="font-medium text-lg">No se encontraron usuarios</p>
                     <p className="text-sm">Intenta ajustar los filtros de búsqueda.</p>
@@ -579,7 +643,7 @@ export default function AdminUsuariosDinamico() {
                 </tr>
               ) : (
                 usuariosFiltrados.map((u, index) => {
-                  const esRolEmbajador = u.roles?.nombre === 'Embajador';
+                  const esRolEmbajador = u.roles?.nombre === ROL_EMBAJADOR;
                   const datosEmbajador = Array.isArray(u.embajadores) ? u.embajadores[0] : u.embajadores;
                   const cantActividades = u.actividades ? u.actividades.length : 0;
                   const edadCalculada = calcularEdad(u.fecha_nacimiento);
@@ -590,6 +654,9 @@ export default function AdminUsuariosDinamico() {
                       <td className="p-4">
                         <div className="font-bold text-gray-900 whitespace-nowrap">{u.nombre} {u.apellido}</div>
                       </td>
+                      
+                     
+
                       <td className="p-4 text-center">
                         <span className="bg-gray-100 text-gray-700 px-2.5 py-1 rounded-md font-bold text-xs">
                           {edadCalculada !== 'N/A' ? `${edadCalculada}` : '-'}
@@ -610,7 +677,6 @@ export default function AdminUsuariosDinamico() {
                         </span>
                       </td>
 
-                      {/* RENDERS CONDICIONALES PARA LA TABLA */}
                       {mostrarColumnasEmbajador && (
                         <td className="p-4">
                           {esRolEmbajador ? (
@@ -631,6 +697,13 @@ export default function AdminUsuariosDinamico() {
                       <td className="p-4 text-center">
                         <span className={`inline-flex items-center w-2.5 h-2.5 rounded-full mr-1.5 ${u.activo ? 'bg-green-500' : 'bg-red-500'}`}></span>
                         <span className="text-xs font-medium text-gray-700">{u.activo ? 'Activo' : 'Baja'}</span>
+                      </td>
+                       {/* CELDA: ÚLTIMA CONEXIÓN */}
+                      <td className="p-4 text-center">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#00689D] bg-[#00689D]/10 px-2.5 py-1 rounded-md border border-[#00689D]/20 whitespace-nowrap">
+                          <Clock size={12} />
+                          {renderUltimoAcceso(u.ultimo_acceso)}
+                        </span>
                       </td>
                       
                       <td className="p-4">
