@@ -432,7 +432,7 @@ if (actividad.actividad_sostenibilidad) {
               
               {/* === NUEVA FILA DE ODS COMPLEMENTARIOS === */}
               <View style={styles.row}>
-                <View style={[styles.cellHeaderCenter, styles.w15]}><Text>ODS COMPLEMENTARIOS</Text></View>
+                <View style={[styles.cellHeaderCenter, styles.w15]}><Text>ODS{'\n'}COMPLEMENTARIOS</Text></View>
                 <View style={[styles.cellData, styles.w85, styles.noBorderRight]}><Text>{odsComplementariosText}</Text></View>
               </View>
               {/* ========================================= */}

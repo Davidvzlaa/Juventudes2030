@@ -1,25 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Inbox, FileText, Edit2, X, Save, Settings2, Plus, Calendar, Loader2, Filter, MapPin, Globe, AlertTriangle, RefreshCw, Lock
 } from 'lucide-react';
-import { PDFViewer, PDFDownloadLink } from '@react-pdf/renderer';
-import { supabase } from '@/lib/supabase'; 
+import { BlobProvider, PDFDownloadLink } from '@react-pdf/renderer'; 
 import { toast } from 'sonner';
 
-import ReportePDF from '@/ReportePDF';
+// Ajusta estas rutas según la estructura de tu proyecto
+import { supabase } from '../../lib/supabase'; 
+import ReportePDF from '../../ReportePDF';
+import { useSessionStorage } from '../../hooks/useSessionStorage';
+import type { Reporte, Actividad, CategoriaDB, AccionDB, OdsDB, MunicipioDB } from '../../types/types';
 
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-// MEJORA: El audio se instancia una sola vez fuera de la función para evitar fugas de memoria
-const notificationSound = new Audio('/notification.mp3');
-notificationSound.volume = 0.5;
+const notificationSound = typeof window !== 'undefined' ? new Audio('/notification.mp3') : null;
+if (notificationSound) notificationSound.volume = 0.5;
 
 const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
-  notificationSound.currentTime = 0;
-  notificationSound.play().catch(err => console.log('Audio bloqueado:', err));
-
+  if (notificationSound) {
+    notificationSound.currentTime = 0;
+    notificationSound.play().catch(err => console.log('Audio bloqueado:', err));
+  }
   const options = { position: 'bottom-right' as const };
-
   switch (type) {
     case 'success': toast.success(message, options); break;
     case 'error': toast.error(message, options); break;
@@ -29,33 +31,37 @@ const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | '
 };
 
 export default function AdminReportes() {
-  const [reportes, setReportes] = useState<any[]>([]);
-  const [reporteSeleccionado, setReporteSeleccionado] = useState<any>(null);
-  const [ocultarAnuladasPDF, setOcultarAnuladasPDF] = useState(false);
+  const [reportes, setReportes] = useState<Reporte[]>([]);
+  const [reporteSeleccionado, setReporteSeleccionado] = useState<Reporte | null>(null);
   
-  const [actividadEnEdicion, setActividadEnEdicion] = useState<any>(null);
-  const [guardando, setGuardando] = useState(false);
+  // Persistencia
+  const [reporteGuardadoId, setReporteGuardadoId] = useSessionStorage<number | null>('admin_reporte_id', null);
+  const [filtroEstado, setFiltroEstado] = useSessionStorage<'Todos' | 'Enviado' | 'Borrador'>('admin_filtro_estado', 'Enviado'); 
+  const [filtroMes, setFiltroMes] = useSessionStorage<string>('admin_filtro_mes', 'Todos'); 
+  const [filtroMunicipio, setFiltroMunicipio] = useSessionStorage<string>('admin_filtro_mun', 'Todos');
+  const [ocultarAnuladasPDF, setOcultarAnuladasPDF] = useSessionStorage<boolean>('admin_ocultar_anuladas', false);
 
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+
+  // Edición y anulación
+  const [actividadEnEdicion, setActividadEnEdicion] = useState<Actividad | null>(null);
+  const [guardando, setGuardando] = useState(false);
   const [modalAnular, setModalAnular] = useState<{ visible: boolean; actividadId: number | null; comentario: string }>({
     visible: false, actividadId: null, comentario: ''
   });
   const [procesandoAnulacion, setProcesandoAnulacion] = useState(false);
 
-  const [filtroEstado, setFiltroEstado] = useState<'Todos' | 'Enviado' | 'Borrador'>('Enviado'); 
-  const [filtroMes, setFiltroMes] = useState<string>('Todos'); 
-  const [filtroMunicipio, setFiltroMunicipio] = useState<string>('Todos');
-  
-  const [categoriasDB, setCategoriasDB] = useState<any[]>([]);
-  const [accionesDB, setAccionesDB] = useState<any[]>([]);
-  const [odsDB, setOdsDB] = useState<any[]>([]); 
-  const [municipiosList, setMunicipiosList] = useState<any[]>([]);
+  // Catálogos
+  const [categoriasDB, setCategoriasDB] = useState<CategoriaDB[]>([]);
+  const [accionesDB, setAccionesDB] = useState<AccionDB[]>([]);
+  const [odsDB, setOdsDB] = useState<OdsDB[]>([]); 
+  const [municipiosList, setMunicipiosList] = useState<MunicipioDB[]>([]);
   const [mesesDisponibles, setMesesDisponibles] = useState<{mes: number, anio: number, nombre: string}[]>([]);
 
   const [showHabilitarModal, setShowHabilitarModal] = useState(false);
   const [nuevoMes, setNuevoMes] = useState(new Date().getMonth() + 1);
   const [nuevoAnio, setNuevoAnio] = useState(new Date().getFullYear());
   const [procesandoMes, setProcesandoMes] = useState(false);
-
   const [showDeshabilitarModal, setShowDeshabilitarModal] = useState(false);
   const [mesDeshabilitar, setMesDeshabilitar] = useState<string>('');
   const [procesandoDeshabilitar, setProcesandoDeshabilitar] = useState(false);
@@ -88,10 +94,11 @@ export default function AdminReportes() {
       if (munRes.data) setMunicipiosList(munRes.data);
 
       const embMap = new Map();
-      embRes.data?.forEach(e => embMap.set(e.usuario_id, (e.municipios as any)?.nombre || 'Sin municipio'));
+      // @ts-ignore
+      embRes.data?.forEach(e => embMap.set(e.usuario_id, e.municipios?.nombre || 'Sin municipio'));
 
       if (repRes.data) {
-        const formateados = repRes.data.map((r: any) => ({
+        const formateados: Reporte[] = repRes.data.map((r: any) => ({
           ...r,
           nombre_mes: `${MESES[(r.mes || 1) - 1]} ${r.anio}`,
           embajador: { nombre: `${r.usuarios?.nombre || ''} ${r.usuarios?.apellido || ''}`.trim() || 'Sin Nombre' },
@@ -113,6 +120,63 @@ export default function AdminReportes() {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  // ==========================================
+  // ARREGLO 1: SE AGREGÓ "reporteSeleccionado" A LAS DEPENDENCIAS
+  // Esto evita que Vite recargue el PDF 2 veces al dar F5
+  // ==========================================
+  useEffect(() => {
+    if (reportes.length > 0 && reporteGuardadoId && !reporteSeleccionado) {
+      const reporteRecuperado = reportes.find(r => r.id === reporteGuardadoId);
+      if (reporteRecuperado) {
+        seleccionarReporte(reporteRecuperado, true);
+      }
+    }
+  }, [reportes, reporteGuardadoId, reporteSeleccionado]); 
+
+  // ==========================================
+  // ARREGLO 2: ESCUDO ANTI-DOBLE CARGA (cargandoDetalle)
+  // ==========================================
+  const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
+    // Si ya estamos descargando algo, ignoramos el clic para no volvernos locos
+    if (cargandoDetalle) return;
+
+    if (!forceRefresh && reporteSeleccionado?.id === reporte.id) {
+      setReporteSeleccionado(null); 
+      setReporteGuardadoId(null); 
+      return; 
+    }
+
+    setReporteGuardadoId(reporte.id); 
+    setReporteSeleccionado(reporte); 
+    setCargandoDetalle(true); 
+    
+    const strMes = String(reporte.mes).padStart(2, '0');
+    const ultimoDia = new Date(reporte.anio, reporte.mes, 0).getDate();
+
+    try {
+      const { data, error } = await supabase.rpc('obtener_reporte_completo', {
+        p_reporte_id: reporte.id,
+        p_usuario_id: reporte.usuario_id,
+        p_fecha_inicio: `${reporte.anio}-${strMes}-01`,
+        p_fecha_fin: `${reporte.anio}-${strMes}-${ultimoDia}`
+      });
+
+      if (error) throw error;
+
+      if (data) {
+        setReporteSeleccionado({
+          ...reporte,
+          actividades: data.actividades || []
+        });
+      }
+
+    } catch (err: any) {
+      notifyWithSound("Error cargando detalles: " + err.message, "error");
+    } finally {
+      setCargandoDetalle(false); 
+    }
+  };
 
   const handleHabilitarMes = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -172,106 +236,6 @@ export default function AdminReportes() {
     finally { setProcesandoDeshabilitar(false); }
   };
 
-  const seleccionarReporte = async (reporte: any, forceRefresh = false) => {
-    if (!forceRefresh && reporteSeleccionado?.id === reporte.id) {
-      setReporteSeleccionado(null); 
-      return; 
-    }
-
-    setReporteSeleccionado(reporte); 
-    
-    const strMes = String(reporte.mes).padStart(2, '0');
-    const ultimoDia = new Date(reporte.anio, reporte.mes, 0).getDate();
-    const fechaInicio = `${reporte.anio}-${strMes}-01`;
-    const fechaFin = `${reporte.anio}-${strMes}-${ultimoDia}`;
-
-    const { data: actsCreadas } = await supabase.from('actividades').select(`
-        *, municipios(nombre),
-        actividad_beneficiarios(categoria_id, hombres, mujeres, total),
-        actividad_acciones(tipo_accion_id, cantidad),
-        actividad_sostenibilidad(area_id),
-        actividad_ods(ods_id, es_principal, ods(numero, nombre)),
-        evidencias(id, url_archivo)
-      `)
-      .eq('creado_por_usuario_id', reporte.usuario_id)
-      .gte('fecha_evento', fechaInicio)
-      .lte('fecha_evento', fechaFin)
-      .is('fecha_eliminacion', null);
-
-    const { data: actsUnidas } = await supabase.from('actividad_asistentes').select(`
-        actividad_id,
-        actividades (
-          *, municipios(nombre),
-          actividad_beneficiarios(categoria_id, hombres, mujeres, total),
-          actividad_acciones(tipo_accion_id, cantidad),
-          actividad_sostenibilidad(area_id),
-          actividad_ods(ods_id, es_principal, ods(numero, nombre)),
-          evidencias(id, url_archivo)
-        )
-      `)
-      .eq('usuario_id', reporte.usuario_id);
-
-    const actividadesMap = new Map();
-
-    actsCreadas?.forEach((act: any) => {
-      actividadesMap.set(act.id, act);
-    });
-
-    actsUnidas?.forEach((item: any) => {
-      const act = Array.isArray(item.actividades) ? item.actividades[0] : item.actividades;
-      if (act && act.fecha_eliminacion === null) {
-        if (act.fecha_evento >= fechaInicio && act.fecha_evento <= fechaFin) {
-          if (!actividadesMap.has(act.id)) {
-            actividadesMap.set(act.id, act);
-          }
-        }
-      }
-    });
-
-    const actividadesMes = Array.from(actividadesMap.values()).sort((a, b) => 
-      new Date(a.fecha_evento).getTime() - new Date(b.fecha_evento).getTime()
-    );
-
-    if (actividadesMes.length === 0) {
-      setReporteSeleccionado({ ...reporte, actividades: [] });
-      return;
-    }
-
-    const { data: repActs } = await supabase.from('reporte_act').select('actividad_id, estado_validacion, comentarios_admin').eq('reporte_id', reporte.id);
-    const validacionMap = new Map();
-    repActs?.forEach(ra => validacionMap.set(ra.actividad_id, { anulada: ra.estado_validacion === 'Rechazada', comentario: ra.comentarios_admin || '' }));
-
-    const actividadesCompletas = actividadesMes.map((act: any) => {
-      let beneficiariosObj: any = {};
-      act.actividad_beneficiarios?.forEach((b: any) => {
-        beneficiariosObj[b.categoria_id] = { hombres: b.hombres?.toString(), mujeres: b.mujeres?.toString(), total: b.total?.toString() };
-      });
-
-      let odsSeleccionados: number[] = [];
-      if (act.actividad_ods) {
-        const principal = act.actividad_ods.find((o: any) => o.es_principal);
-        const secundarios = act.actividad_ods.filter((o: any) => !o.es_principal);
-        if (principal) odsSeleccionados.push(principal.ods_id);
-        odsSeleccionados.push(...secundarios.map((o:any) => o.ods_id));
-      }
-
-      const validacionData = validacionMap.get(act.id) || { anulada: false, comentario: '' };
-
-      return {
-        ...act,
-        tipo_accion_id_real: act.actividad_acciones?.[0]?.tipo_accion_id?.toString() || '',
-        domicilio: { calle: act.calle || '', colonia: act.colonia || '', municipio: act.municipio_id || '' },
-        beneficiarios: beneficiariosObj,
-        ods_seleccionados: odsSeleccionados,
-        evidencias: act.evidencias ? act.evidencias.map((ev:any) => ({ id: ev.id, url: ev.url_archivo })) : [],
-        anulada: validacionData.anulada,
-        motivo_anulacion: validacionData.comentario
-      };
-    });
-
-    setReporteSeleccionado({ ...reporte, actividades: actividadesCompletas });
-  };
-
   const toggleAnularActividad = (actividadId: number, anuladaActual: boolean) => {
     if (!anuladaActual) setModalAnular({ visible: true, actividadId, comentario: '' });
     else procesarCambioEstado(actividadId, 'Aprobada', null);
@@ -296,7 +260,7 @@ export default function AdminReportes() {
 
       setReporteSeleccionado({
         ...reporteSeleccionado,
-        actividades: reporteSeleccionado.actividades.map((act: any) => 
+        actividades: reporteSeleccionado.actividades.map(act => 
           act.id === actividadId ? { ...act, anulada: nuevoEstadoVal === 'Rechazada', motivo_anulacion: comentario || '' } : act
         )
       });
@@ -310,19 +274,22 @@ export default function AdminReportes() {
   };
 
   const handleChangeSimple = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    if(!actividadEnEdicion) return;
     const { name, value } = e.target;
     setActividadEnEdicion({ ...actividadEnEdicion, [name]: value });
   };
 
   const handleDomicilioChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    if(!actividadEnEdicion) return;
     const { name, value } = e.target;
-    setActividadEnEdicion((prev: any) => ({ ...prev, domicilio: { ...prev.domicilio, [name]: name === 'municipio' ? Number(value) : value } }));
+    setActividadEnEdicion(prev => prev ? ({ ...prev, domicilio: { ...prev.domicilio, [name]: name === 'municipio' ? Number(value) : value } }) : null);
   };
 
   const toggleOds = (odsId: number) => {
-    setActividadEnEdicion((prev: any) => {
+    setActividadEnEdicion(prev => {
+      if(!prev) return prev;
       const arr = prev.ods_seleccionados || [];
-      if (arr.includes(odsId)) return { ...prev, ods_seleccionados: arr.filter((id: number) => id !== odsId) };
+      if (arr.includes(odsId)) return { ...prev, ods_seleccionados: arr.filter(id => id !== odsId) };
       if (arr.length >= 4) { 
         notifyWithSound("Máximo 4 ODS permitidos.", "warning"); 
         return prev; 
@@ -331,10 +298,15 @@ export default function AdminReportes() {
     });
   };
 
-  const handleBeneficiarioChange = (categoriaId: number, campo: string, value: string) => {
-    setActividadEnEdicion((prev: any) => ({
-      ...prev, beneficiarios: { ...prev.beneficiarios, [categoriaId]: { ...prev.beneficiarios?.[categoriaId], [campo]: value } }
-    }));
+  const handleBeneficiarioChange = (categoriaId: number, campo: 'hombres' | 'mujeres', value: string) => {
+    setActividadEnEdicion(prev => {
+        if(!prev) return prev;
+        const currentCat = prev.beneficiarios?.[categoriaId] || { hombres: '0', mujeres: '0', total: '0' };
+        return {
+          ...prev, 
+          beneficiarios: { ...prev.beneficiarios, [categoriaId]: { ...currentCat, [campo]: value } }
+        };
+    });
   };
 
   const guardarEdicionActividad = async (e: React.FormEvent) => {
@@ -344,10 +316,9 @@ export default function AdminReportes() {
     setGuardando(true);
     try {
       const actId = actividadEnEdicion.id;
-      const tipoAccionIdInt = parseInt(actividadEnEdicion.tipo_accion_id_real, 10);
+      const tipoAccionIdInt = parseInt(actividadEnEdicion.tipo_accion_id_real || '0', 10);
       const tipoObj = accionesDB.find(a => a.id === tipoAccionIdInt);
 
-      
       const { error: errAct } = await supabase.from('actividades').update({
         nombre: actividadEnEdicion.nombre, 
         tipo_actividad: tipoObj?.nombre || null, 
@@ -363,13 +334,14 @@ export default function AdminReportes() {
         descripcion: actividadEnEdicion.descripcion,
         fecha_actualizacion: new Date().toISOString()
       }).eq('id', actId);
+      
       if (errAct) throw errAct;
 
       await supabase.from('actividad_beneficiarios').delete().eq('actividad_id', actId);
       if (actividadEnEdicion.beneficiarios) {
         const benefPayload = Object.entries(actividadEnEdicion.beneficiarios)
           .filter(([id]) => Number(id) !== 99)
-          .map(([id, val]: any) => ({
+          .map(([id, val]) => ({
             actividad_id: actId, categoria_id: Number(id),
             hombres: parseInt(val.hombres || '0', 10), mujeres: parseInt(val.mujeres || '0', 10),
             total: parseInt(val.hombres || '0', 10) + parseInt(val.mujeres || '0', 10),
@@ -379,12 +351,12 @@ export default function AdminReportes() {
       }
 
       await supabase.from('actividad_acciones').delete().eq('actividad_id', actId);
-      if (!isNaN(tipoAccionIdInt)) {
+      if (!isNaN(tipoAccionIdInt) && tipoAccionIdInt > 0) {
         await supabase.from('actividad_acciones').insert({ actividad_id: actId, tipo_accion_id: tipoAccionIdInt, cantidad: 1, creado_en: new Date().toISOString(), actualizado_en: new Date().toISOString() });
       }
 
       const areasSeleccionadas = new Set<number>();
-      actividadEnEdicion.ods_seleccionados?.forEach((odsId: number) => {
+      actividadEnEdicion.ods_seleccionados?.forEach(odsId => {
         const cat = odsDB.find(o => o.id === odsId)?.categoria_sostenibilidad?.toLowerCase() || '';
         if (cat.includes('econ')) areasSeleccionadas.add(1);
         if (cat.includes('social') || cat.includes('sociedad')) areasSeleccionadas.add(2);
@@ -398,8 +370,8 @@ export default function AdminReportes() {
       }
 
       await supabase.from('actividad_ods').delete().eq('actividad_id', actId);
-      if (actividadEnEdicion.ods_seleccionados?.length > 0) {
-        await supabase.from('actividad_ods').insert(actividadEnEdicion.ods_seleccionados.map((odsId: number, idx: number) => ({ actividad_id: actId, ods_id: odsId, es_principal: idx === 0 })));
+      if (actividadEnEdicion.ods_seleccionados && actividadEnEdicion.ods_seleccionados.length > 0) {
+        await supabase.from('actividad_ods').insert(actividadEnEdicion.ods_seleccionados.map((odsId, idx) => ({ actividad_id: actId, ods_id: odsId, es_principal: idx === 0 })));
       }
 
       notifyWithSound('Actividad modificada exitosamente', 'success');
@@ -412,10 +384,21 @@ export default function AdminReportes() {
     finally { setGuardando(false); }
   };
 
-  const snapshotParaPDF = reporteSeleccionado ? {
-    ...reporteSeleccionado,
-    actividades: ocultarAnuladasPDF ? reporteSeleccionado.actividades.filter((a: any) => !a.anulada) : reporteSeleccionado.actividades
-  } : null;
+  const snapshotParaPDF = useMemo(() => {
+    if (!reporteSeleccionado || cargandoDetalle) return null; 
+    return {
+      ...reporteSeleccionado,
+      actividades: ocultarAnuladasPDF 
+        ? reporteSeleccionado.actividades?.filter(a => !a.anulada) 
+        : reporteSeleccionado.actividades
+    };
+  }, [reporteSeleccionado, ocultarAnuladasPDF, cargandoDetalle]);
+
+  // Memorizamos el documento en sí
+  const pdfDocument = useMemo(() => {
+    if (!snapshotParaPDF || categoriasDB.length === 0) return null;
+    return <ReportePDF snapshot={snapshotParaPDF} categorias={categoriasDB} acciones={accionesDB} />;
+  }, [snapshotParaPDF, categoriasDB, accionesDB]);
 
   const reportesFiltrados = reportes.filter(r => {
     return (filtroEstado === 'Todos' || r.estado === filtroEstado) &&
@@ -517,9 +500,15 @@ export default function AdminReportes() {
                       let valH = 0, valM = 0;
                       if (esFilaTotal) {
                         categoriasDB.forEach(c => {
-                          if (c.id !== 99) { valH += parseInt(actividadEnEdicion.beneficiarios?.[c.id]?.hombres || '0', 10); valM += parseInt(actividadEnEdicion.beneficiarios?.[c.id]?.mujeres || '0', 10); }
+                          if (c.id !== 99) { 
+                            valH += parseInt(actividadEnEdicion.beneficiarios?.[c.id]?.hombres || '0', 10); 
+                            valM += parseInt(actividadEnEdicion.beneficiarios?.[c.id]?.mujeres || '0', 10); 
+                          }
                         });
-                      } else { valH = parseInt(actividadEnEdicion.beneficiarios?.[cat.id]?.hombres || '0', 10); valM = parseInt(actividadEnEdicion.beneficiarios?.[cat.id]?.mujeres || '0', 10); }
+                      } else { 
+                        valH = parseInt(actividadEnEdicion.beneficiarios?.[cat.id]?.hombres || '0', 10); 
+                        valM = parseInt(actividadEnEdicion.beneficiarios?.[cat.id]?.mujeres || '0', 10); 
+                      }
 
                       return (
                         <div key={cat.id} className={`flex gap-2 items-center p-2 rounded-lg border ${esFilaTotal ? 'bg-[#00689D]/5 border-[#00689D]/20' : 'bg-gray-50 border-gray-100'}`}>
@@ -681,67 +670,103 @@ export default function AdminReportes() {
               <button onClick={() => seleccionarReporte(reporteSeleccionado, true)} className="text-[#00689D] flex w-full sm:w-auto justify-center items-center gap-1.5 text-xs font-bold bg-blue-50 px-3 py-2 rounded-lg hover:bg-blue-100"><RefreshCw size={14}/> Refrescar</button>
             </div>
             
-            <div className="flex-1 flex flex-col xl:flex-row overflow-y-auto lg:overflow-hidden">
-              <div className="w-full xl:flex-1 bg-gray-600 flex flex-col min-h-[40vh] xl:min-h-0 order-2 xl:order-1 relative">
-  
-  {/* VISTA PARA COMPUTADORAS (Pantallas medianas y grandes) */}
-  <div className="hidden md:block w-full h-full">
-    <PDFViewer width="100%" height="100%" className="border-none">
-      <ReportePDF snapshot={snapshotParaPDF} categorias={categoriasDB} acciones={accionesDB} />
-    </PDFViewer>
-  </div>
-
-  {/* VISTA PARA CELULARES (Pantallas pequeñas) */}
-  <div className="md:hidden flex flex-col items-center justify-center w-full h-full bg-gray-100 p-6 text-center">
-    <FileText size={64} className="text-gray-300 mb-4" />
-    <h3 className="font-bold text-gray-700 mb-2">Previsualización no disponible en móviles</h3>
-    <p className="text-xs text-gray-500 mb-6">Descarga el PDF para verlo en el visor de tu dispositivo.</p>
-    
-    <PDFDownloadLink 
-      document={<ReportePDF snapshot={snapshotParaPDF} categorias={categoriasDB} acciones={accionesDB} />} 
-      fileName={`Reporte-${reporteSeleccionado.nombre_mes}-${reporteSeleccionado.embajador.nombre}.pdf`}
-      className="bg-[#00689D] text-white px-6 py-3 rounded-xl font-bold shadow-md hover:bg-[#00527A] flex items-center gap-2 transition-colors"
-    >
-      {/* react-pdf pasa el estado de carga mediante una función hija */}
-      {({ loading }) => (
-        loading ? (
-          <><Loader2 size={18} className="animate-spin" /> Generando documento...</>
-        ) : (
-          <><FileText size={18} /> Descargar Reporte PDF</>
-        )
-      )}
-    </PDFDownloadLink>
-  </div>
-  
-</div>
-
-              <div className="w-full xl:w-80 bg-gray-50 border-b xl:border-b-0 xl:border-l border-gray-200 flex flex-col shrink-0 order-1 xl:order-2">
-                <div className="p-4 bg-white border-b border-gray-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2"><Settings2 size={16}/><span className="text-xs font-bold">Ocultar anuladas en PDF</span></div>
-                  <button onClick={() => setOcultarAnuladasPDF(!ocultarAnuladasPDF)} className={`w-10 h-5 rounded-full relative flex items-center ${ocultarAnuladasPDF ? 'bg-[#00689D]' : 'bg-gray-300'}`}>
-                    <div className={`w-3.5 h-3.5 bg-white rounded-full absolute transition-all ${ocultarAnuladasPDF ? 'left-[22px]' : 'left-1'}`} />
-                  </button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[300px] xl:max-h-none">
-                  {reporteSeleccionado.actividades && reporteSeleccionado.actividades.length === 0 ? (
-                    <div className="text-center text-sm text-gray-400 mt-4">Sin actividades en este reporte.</div>
+            {/* Si Supabase está trabajando, mostramos el loader principal */}
+            {cargandoDetalle || categoriasDB.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-gray-50/50">
+                <Loader2 size={48} className="animate-spin text-[#00689D] mb-4" />
+                <p className="font-bold text-gray-600">Descargando información completa...</p>
+                <p className="text-xs mt-1">Conectando con la base de datos</p>
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col xl:flex-row overflow-y-auto lg:overflow-hidden">
+                
+                {/* VISTA PARA COMPUTADORAS (CERO PARPADEOS) */}
+                <div className="hidden md:flex w-full h-full bg-gray-100 relative items-center justify-center border-b border-gray-200 xl:border-b-0 order-2 xl:order-1">
+                  {pdfDocument ? (
+                    <BlobProvider document={pdfDocument}>
+                      {({ url, loading, error }) => {
+                        if (loading || !url) {
+                          return (
+                            <div className="flex flex-col items-center justify-center text-gray-400 gap-3">
+                              <Loader2 size={48} className="animate-spin text-[#00689D]" />
+                              <h3 className="font-bold text-gray-600">Generando documento...</h3>
+                              <p className="text-xs">Renderizando evidencias y tablas</p>
+                            </div>
+                          );
+                        }
+                        if (error) {
+                          return (
+                            <div className="flex flex-col items-center text-red-500 gap-2">
+                              <AlertTriangle size={48} />
+                              <p className="font-bold">Error al construir el PDF</p>
+                            </div>
+                          );
+                        }
+                        return (
+                          <iframe 
+                            src={`${url}#toolbar=1&navpanes=0&view=FitH`} 
+                            className="w-full h-full border-none bg-white" 
+                            title="Reporte PDF"
+                          />
+                        );
+                      }}
+                    </BlobProvider>
                   ) : (
-                    reporteSeleccionado.actividades?.map((act: any, idx: number) => (
-                      <div key={act.id} className={`p-3 rounded-xl border ${act.anulada ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}`}>
-                        <p className={`text-sm font-bold truncate mb-3 ${act.anulada ? 'line-through text-red-600' : ''}`}>{idx + 1}. {act.nombre}</p>
-                        <div className="flex gap-2">
-                          <button onClick={() => setActividadEnEdicion(act)} title="Editar actividad" className="flex items-center justify-center px-3 py-1.5 rounded-lg border bg-gray-100 hover:bg-gray-200 text-gray-700"><Edit2 size={16} /></button>
-                          <button onClick={() => toggleAnularActividad(act.id, act.anulada)} className={`flex-1 flex justify-center items-center py-1.5 text-[10px] sm:text-xs font-bold rounded-lg border transition-colors ${act.anulada ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}>
-                            {act.anulada ? 'Restaurar' : 'Anular Actividad'}
-                          </button>
-                        </div>
-                      </div>
-                    ))
+                    <div className="text-gray-400 text-sm">Esperando datos...</div>
                   )}
                 </div>
+
+                {/* VISTA PARA CELULARES */}
+                <div className="md:hidden flex flex-col items-center justify-center w-full h-full bg-gray-100 p-6 text-center absolute inset-0 z-10 order-2 xl:order-1">
+                  <FileText size={64} className="text-gray-300 mb-4" />
+                  <h3 className="font-bold text-gray-700 mb-2">Previsualización no disponible en móviles</h3>
+                  <p className="text-xs text-gray-500 mb-6">Descarga el PDF para verlo en el visor de tu dispositivo.</p>
+                  
+                  {pdfDocument && (
+                    <PDFDownloadLink 
+                      document={pdfDocument} 
+                      fileName={`Reporte-${reporteSeleccionado.nombre_mes}-${reporteSeleccionado.embajador.nombre}.pdf`}
+                      className="bg-[#00689D] text-white px-6 py-3 rounded-xl font-bold shadow-md hover:bg-[#00527A] flex items-center gap-2 transition-colors"
+                    >
+                      {({ loading }) => (
+                        loading ? (
+                          <><Loader2 size={18} className="animate-spin" /> Procesando...</>
+                        ) : (
+                          <><FileText size={18} /> Descargar Reporte PDF</>
+                        )
+                      )}
+                    </PDFDownloadLink>
+                  )}
+                </div>
+
+                <div className="w-full xl:w-80 bg-gray-50 border-b xl:border-b-0 xl:border-l border-gray-200 flex flex-col shrink-0 order-1 xl:order-2">
+                  <div className="p-4 bg-white border-b border-gray-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2"><Settings2 size={16}/><span className="text-xs font-bold">Ocultar anuladas en PDF</span></div>
+                    <button onClick={() => setOcultarAnuladasPDF(!ocultarAnuladasPDF)} className={`w-10 h-5 rounded-full relative flex items-center ${ocultarAnuladasPDF ? 'bg-[#00689D]' : 'bg-gray-300'}`}>
+                      <div className={`w-3.5 h-3.5 bg-white rounded-full absolute transition-all ${ocultarAnuladasPDF ? 'left-[22px]' : 'left-1'}`} />
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[300px] xl:max-h-none">
+                    {reporteSeleccionado.actividades && reporteSeleccionado.actividades.length === 0 ? (
+                      <div className="text-center text-sm text-gray-400 mt-4">Sin actividades en este reporte.</div>
+                    ) : (
+                      reporteSeleccionado.actividades?.map((act: Actividad, idx: number) => (
+                        <div key={act.id} className={`p-3 rounded-xl border ${act.anulada ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}`}>
+                          <p className={`text-sm font-bold truncate mb-3 ${act.anulada ? 'line-through text-red-600' : ''}`}>{idx + 1}. {act.nombre}</p>
+                          <div className="flex gap-2">
+                            <button onClick={() => setActividadEnEdicion(act)} title="Editar actividad" className="flex items-center justify-center px-3 py-1.5 rounded-lg border bg-gray-100 hover:bg-gray-200 text-gray-700"><Edit2 size={16} /></button>
+                            <button onClick={() => toggleAnularActividad(act.id, act.anulada)} className={`flex-1 flex justify-center items-center py-1.5 text-[10px] sm:text-xs font-bold rounded-lg border transition-colors ${act.anulada ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}>
+                              {act.anulada ? 'Restaurar' : 'Anular Actividad'}
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         ) : (
           <div className="w-full lg:flex-1 bg-white rounded-2xl flex items-center justify-center flex-col text-gray-400 py-12 lg:py-0">
