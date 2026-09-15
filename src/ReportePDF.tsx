@@ -4,6 +4,67 @@ import { es } from 'date-fns/locale';
 import SEBIDESLogo from './assets/SEBIDES.png';
 import JUVENTUDESLogo from './assets/LOGO JUVENTUDES 20230.png';
 // ==========================================
+// UTILIDADES DEL PDF
+// ==========================================
+const toNumber = (value: unknown): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const safeText = (value: unknown, fallback = ''): string => {
+  if (value === null || value === undefined) return fallback;
+  return String(value);
+};
+
+const formatDate = (value: unknown): string => {
+  if (!value) return '';
+
+  try {
+    const datePart = String(value).split('T')[0];
+    const [year, month, day] = datePart.split('-').map(Number);
+
+    if (!year || !month || !day) return '';
+
+    const date = new Date(year, month - 1, day);
+    if (Number.isNaN(date.getTime())) return '';
+
+    const result = format(date, "EEEE d 'de' MMMM 'del' yyyy", { locale: es });
+    return result.charAt(0).toUpperCase() + result.slice(1);
+  } catch {
+    return '';
+  }
+};
+
+const formatTimeAMPM = (value: unknown): string => {
+  if (!value) return '';
+
+  const parts = String(value).split(':');
+  if (parts.length < 2) return String(value);
+
+  const hoursRaw = Number(parts[0]);
+  const minutes = parts[1];
+
+  if (!Number.isFinite(hoursRaw)) return String(value);
+
+  const ampm = hoursRaw >= 12 ? 'PM' : 'AM';
+  const hours12 = hoursRaw % 12 || 12;
+
+  return `${String(hours12).padStart(2, '0')}:${minutes} ${ampm}`;
+};
+
+const getBeneficiarios = (actividad: any, categoriaId: number) => {
+  const dbRow = actividad?.actividad_beneficiarios?.find(
+    (item: any) => item.categoria_id === categoriaId
+  );
+  const uiRow = actividad?.beneficiarios?.[categoriaId];
+
+  return {
+    hombres: toNumber(dbRow?.hombres ?? uiRow?.hombres),
+    mujeres: toNumber(dbRow?.mujeres ?? uiRow?.mujeres),
+  };
+};
+
+// ==========================================
 // 1. ESTILOS DEL PDF
 // ==========================================
 const styles = StyleSheet.create({
@@ -19,7 +80,7 @@ const styles = StyleSheet.create({
   
   // Estilos de celdas
   cellHeader: { fontWeight: 'bold', padding: 3, borderRightWidth: 1, borderColor: '#000', justifyContent: 'center' },
-  cellHeaderCenter: { fontWeight: 'Bold', backgroundColor: '#DEDEDE', padding: 3, borderRightWidth: 1, borderColor: '#000', textAlign: 'center', justifyContent: 'center' },
+  cellHeaderCenter: { fontWeight: 'bold', backgroundColor: '#DEDEDE', padding: 3, borderRightWidth: 1, borderColor: '#000', textAlign: 'center', justifyContent: 'center' },
   cellData: { padding: 3, borderRightWidth: 1, backgroundColor: '#FFFFFF', borderColor: '#000',  justifyContent: 'center' },
   
   // Utilidades para quitar bordes duplicados
@@ -216,7 +277,9 @@ const styles = StyleSheet.create({
 // 2. COMPONENTE PDF
 // ==========================================
 export default function ReportePDF({ snapshot, categorias = [], acciones = [] }: any) {
-    if (!snapshot || !snapshot.actividades) return null;
+  if (!snapshot) return null;
+
+  const actividades = Array.isArray(snapshot.actividades) ? snapshot.actividades : [];
 
   return (
     <Document>
@@ -249,15 +312,15 @@ export default function ReportePDF({ snapshot, categorias = [], acciones = [] }:
             <View style={styles.portadaInfoGrid}>
               <View style={styles.portadaInfoCell}>
                 <Text style={styles.portadaInfoLabel}>Nombre Completo</Text>
-                <Text style={styles.portadaInfoValue}>{snapshot.embajador?.nombre?.toUpperCase()}</Text>
+                <Text style={styles.portadaInfoValue}>{safeText(snapshot.embajador?.nombre).toUpperCase()}</Text>
               </View>
               <View style={styles.portadaInfoCell}>
                 <Text style={styles.portadaInfoLabel}>Periodo Reportado</Text>
-                <Text style={styles.portadaInfoValue}>{snapshot.nombre_mes?.toUpperCase()}</Text>
+                <Text style={styles.portadaInfoValue}>{safeText(snapshot.nombre_mes).toUpperCase()}</Text>
               </View>
               <View style={styles.portadaInfoCell}>
                 <Text style={styles.portadaInfoLabel}>Municipio</Text>
-                <Text style={styles.portadaInfoValue}>{snapshot.municipio_nombre?.toUpperCase()}</Text>
+                <Text style={styles.portadaInfoValue}>{safeText(snapshot.municipio_nombre).toUpperCase()}</Text>
               </View>
               <View style={styles.portadaInfoCell}>
                 <Text style={styles.portadaInfoLabel}>Estatus del Expediente</Text>
@@ -272,7 +335,7 @@ export default function ReportePDF({ snapshot, categorias = [], acciones = [] }:
             
             {(() => {
               // Filtrar actividades no anuladas
-              const actividadesValidas = snapshot.actividades.filter((a: any) => !a.anulada);
+              const actividadesValidas = actividades.filter((a: any) => !a.anulada);
               
               const totalActividades = actividadesValidas.length;
               const creadas = actividadesValidas.filter((a: any) => a.creado_por_usuario_id === snapshot.usuario_id).length;
@@ -283,7 +346,7 @@ export default function ReportePDF({ snapshot, categorias = [], acciones = [] }:
                 if (act.beneficiarios) {
                   Object.keys(act.beneficiarios).forEach((catId) => {
                     if (Number(catId) !== 99) {
-                      beneficiariosTotales += parseInt(act.beneficiarios[catId].total || '0', 10);
+                      beneficiariosTotales += toNumber(act.beneficiarios[catId]?.total);
                     }
                   });
                 }
@@ -325,7 +388,7 @@ export default function ReportePDF({ snapshot, categorias = [], acciones = [] }:
         </Page>
       <Page size="LETTER" style={styles.page}>
         
-        {snapshot.actividades.map((actividad: any, index: number) => {
+        {actividades.map((actividad: any, index: number) => {
           
           // ===============================================================
           // ADAPTADORES INTELIGENTES
@@ -361,29 +424,10 @@ export default function ReportePDF({ snapshot, categorias = [], acciones = [] }:
           const calleText = actividad.calle || actividad.domicilio?.calle || '';
           const lugarText = actividad.lugar || '';
 
-          // 4. Fechas y Horas (Ajustado a formato AM/PM)
-          let fechaAjustada = '';
-          if (actividad.fecha_evento) {
-            const partes = actividad.fecha_evento.split('T')[0].split('-');
-            const fechaObj = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
-            fechaAjustada = format(fechaObj, "EEEE d 'de' MMMM 'del' yyyy", { locale: es });
-            fechaAjustada = fechaAjustada.charAt(0).toUpperCase() + fechaAjustada.slice(1);
-          }
-
-          const formatearHoraAMPM = (horaStr: string) => {
-            if (!horaStr) return '';
-            const partes = horaStr.split(':');
-            if (partes.length < 2) return horaStr;
-            let horas = parseInt(partes[0], 10);
-            const minutos = partes[1];
-            const ampm = horas >= 12 ? 'PM' : 'AM';
-            horas = horas % 12;
-            horas = horas ? horas : 12; // la hora 0 debe ser 12
-            return `${horas.toString().padStart(2, '0')}:${minutos} ${ampm}`;
-          };
-
-          const horaInicio = formatearHoraAMPM(actividad.hora_inicio?.slice(0, 5));
-          const horaFin = formatearHoraAMPM(actividad.hora_fin?.slice(0, 5));
+          // 4. Fechas y horas
+          const fechaAjustada = formatDate(actividad.fecha_evento);
+          const horaInicio = formatTimeAMPM(actividad.hora_inicio?.slice(0, 5));
+          const horaFin = formatTimeAMPM(actividad.hora_fin?.slice(0, 5));
 
          // 5. Sostenibilidad
 let eco = false, soc = false, amb = false;
@@ -516,22 +560,21 @@ if (actividad.actividad_sostenibilidad) {
                     const isLast = i === categorias.length - 1;
                     const esFilaTotal = cat.id === 99;
                     
-                    let calcH = 0, calcM = 0;
+                    let calcH = 0;
+                    let calcM = 0;
 
                     if (esFilaTotal) {
                       categorias.forEach((c: any) => {
                         if (c.id !== 99) {
-                          const dbRow = actividad.actividad_beneficiarios?.find((b:any) => b.categoria_id === c.id);
-                          const uiRow = actividad.beneficiarios?.[c.id];
-                          calcH += parseInt(dbRow?.hombres || uiRow?.hombres || '0', 10);
-                          calcM += parseInt(dbRow?.mujeres || uiRow?.mujeres || '0', 10);
+                          const values = getBeneficiarios(actividad, c.id);
+                          calcH += values.hombres;
+                          calcM += values.mujeres;
                         }
                       });
                     } else {
-                      const dbRow = actividad.actividad_beneficiarios?.find((b:any) => b.categoria_id === cat.id);
-                      const uiRow = actividad.beneficiarios?.[cat.id];
-                      calcH = parseInt(dbRow?.hombres || uiRow?.hombres || '0', 10);
-                      calcM = parseInt(dbRow?.mujeres || uiRow?.mujeres || '0', 10);
+                      const values = getBeneficiarios(actividad, cat.id);
+                      calcH = values.hombres;
+                      calcM = values.mujeres;
                     }
 
                     const calcTotal = calcH + calcM;
@@ -584,9 +627,16 @@ if (actividad.actividad_sostenibilidad) {
               <Text style={[styles.sectionHeader, { borderBottomWidth: 0 }]}>Evidencias</Text>
               <View style={[styles.evidenciasContainer, { borderTopWidth: 1, borderColor: '#000' }]}>
                 {actividad.evidencias && actividad.evidencias.length > 0 ? (
-                  actividad.evidencias.map((evidencia: any, index: number) => (
-                    <Image key={index} src={evidencia.url_archivo || evidencia.url} style={styles.foto} />
-                  ))
+                  actividad.evidencias
+                    .map((evidencia: any, index: number) => {
+                      const url = evidencia?.url_archivo || evidencia?.url;
+                      if (!url) return null;
+
+                      return (
+                        <Image key={index} src={url} style={styles.foto} />
+                      );
+                    })
+                    .filter(Boolean)
                 ) : (
                   <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                     <Text style={{ color: '#666', fontSize: 10, fontStyle: 'italic' }}>
