@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Inbox, FileText, Edit2, X, Save, Settings2, Plus, Calendar, Loader2, Filter, MapPin, Globe, AlertTriangle, RefreshCw, Lock
 } from 'lucide-react';
-import { BlobProvider, PDFDownloadLink } from '@react-pdf/renderer'; 
+import { BlobProvider, PDFDownloadLink, Document } from '@react-pdf/renderer';
 import { toast } from 'sonner';
 
 // Ajusta estas rutas según la estructura de tu proyecto
@@ -29,6 +29,141 @@ const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | '
     default: toast.info(message, options);
   }
 };
+// ==========================================
+// VISOR PDF ESTABLE
+// Genera el PDF en segundo plano y conserva
+// el último PDF válido mientras el siguiente
+// se está renderizando.
+// ==========================================
+type PDFBlobContentProps = {
+  url: string | null;
+  loading: boolean;
+  error: Error | null;
+  stableUrl: string | null;
+  onNewUrl: (url: string) => void;
+};
+
+const PDFBlobContent = React.memo(({
+  url,
+  loading,
+  error,
+  stableUrl,
+  onNewUrl,
+}: PDFBlobContentProps) => {
+  useEffect(() => {
+    if (url && url !== stableUrl) {
+      onNewUrl(url);
+    }
+  }, [url, stableUrl, onNewUrl]);
+
+  if (error) {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center bg-white p-6 text-center">
+        <div>
+          <AlertTriangle className="mx-auto mb-3 text-red-500" size={32} />
+          <p className="font-bold text-gray-700">No se pudo generar el PDF</p>
+          <p className="text-xs text-gray-500 mt-1">
+            Intenta refrescar el expediente.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {stableUrl ? (
+        <iframe
+          title="Vista previa del reporte PDF"
+          src={stableUrl}
+          className="w-full h-full border-0 bg-white"
+        />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center bg-white">
+          <div className="text-center">
+            <Loader2
+              size={38}
+              className="animate-spin text-[#00689D] mx-auto mb-3"
+            />
+            <p className="font-bold text-gray-700">
+              Generando vista previa...
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              El PDF aparecerá automáticamente.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {loading && stableUrl && (
+        <div className="absolute inset-x-0 top-0 z-20 pointer-events-none">
+          <div className="h-1 bg-gray-200 overflow-hidden">
+            <div className="h-full w-1/3 bg-[#00689D] animate-[pulse_1.2s_ease-in-out_infinite]" />
+          </div>
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-sm border border-gray-200 shadow-lg rounded-full px-3 py-1.5 flex items-center gap-2 text-xs font-semibold text-gray-600">
+            <Loader2 size={13} className="animate-spin text-[#00689D]" />
+            Actualizando PDF...
+          </div>
+        </div>
+      )}
+    </>
+  );
+});
+
+type PDFDocumentElement = React.ReactElement<React.ComponentProps<typeof Document>>;
+
+const VisorPDFAislado = React.memo(
+  ({ document }: { document: PDFDocumentElement | null }) => {
+    const [stableUrl, setStableUrl] = useState<string | null>(null);
+
+    const currentUrlRef = React.useRef<string | null>(null);
+
+    const handleNewUrl = React.useCallback((url: string) => {
+      const oldUrl = currentUrlRef.current;
+
+      if (oldUrl && oldUrl !== url) {
+        URL.revokeObjectURL(oldUrl);
+      }
+
+      currentUrlRef.current = url;
+      setStableUrl(url);
+    }, []);
+
+    useEffect(() => {
+      return () => {
+        if (currentUrlRef.current) {
+          URL.revokeObjectURL(currentUrlRef.current);
+          currentUrlRef.current = null;
+        }
+      };
+    }, []);
+
+    if (!document) {
+      return (
+        <div className="w-full h-full min-h-0 bg-white flex items-center justify-center">
+          <div className="text-sm text-gray-400">Preparando documento...</div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="relative w-full h-full min-h-0 bg-[#2f2f2f] overflow-hidden">
+        <BlobProvider document={document}>
+          {({ url, loading, error }) => (
+            <PDFBlobContent
+              url={url}
+              loading={loading}
+              error={error}
+              stableUrl={stableUrl}
+              onNewUrl={handleNewUrl}
+            />
+          )}
+        </BlobProvider>
+      </div>
+    );
+  },
+  (prevProps, nextProps) => prevProps.document === nextProps.document
+);
 
 export default function AdminReportes() {
   const [reportes, setReportes] = useState<Reporte[]>([]);
@@ -122,8 +257,7 @@ export default function AdminReportes() {
   useEffect(() => { fetchData(); }, []);
 
   // ==========================================
-  // ARREGLO 1: SE AGREGÓ "reporteSeleccionado" A LAS DEPENDENCIAS
-  // Esto evita que Vite recargue el PDF 2 veces al dar F5
+  // RECUPERAR EL ÚLTIMO EXPEDIENTE ABIERTO
   // ==========================================
   useEffect(() => {
     if (reportes.length > 0 && reporteGuardadoId && !reporteSeleccionado) {
@@ -132,24 +266,28 @@ export default function AdminReportes() {
         seleccionarReporte(reporteRecuperado, true);
       }
     }
-  }, [reportes, reporteGuardadoId, reporteSeleccionado]); 
-
-  // ==========================================
-  // ARREGLO 2: ESCUDO ANTI-DOBLE CARGA (cargandoDetalle)
-  // ==========================================
-  const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
-    // Si ya estamos descargando algo, ignoramos el clic para no volvernos locos
+  }, [reportes, reporteGuardadoId]);
+const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
     if (cargandoDetalle) return;
 
-    if (!forceRefresh && reporteSeleccionado?.id === reporte.id) {
+    // Verificamos si estamos refrescando el reporte que ya tenemos en pantalla
+    const esMismoReporte = reporteSeleccionado?.id === reporte.id;
+
+    if (!forceRefresh && esMismoReporte) {
       setReporteSeleccionado(null); 
       setReporteGuardadoId(null); 
       return; 
     }
 
     setReporteGuardadoId(reporte.id); 
-    setReporteSeleccionado(reporte); 
-    setCargandoDetalle(true); 
+    
+    // MAGIA: Solo mostramos la pantalla de "Cargando..." y ocultamos el PDF 
+    // si estamos abriendo un expediente NUEVO. Si solo estamos guardando 
+    // una edición, NO apagamos la pantalla.
+    if (!esMismoReporte) {
+      setCargandoDetalle(true); 
+      setReporteSeleccionado(null); 
+    }
     
     const strMes = String(reporte.mes).padStart(2, '0');
     const ultimoDia = new Date(reporte.anio, reporte.mes, 0).getDate();
@@ -174,10 +312,12 @@ export default function AdminReportes() {
     } catch (err: any) {
       notifyWithSound("Error cargando detalles: " + err.message, "error");
     } finally {
-      setCargandoDetalle(false); 
+      // Solo quitamos el "Cargando..." si lo habíamos encendido
+      if (!esMismoReporte) {
+        setCargandoDetalle(false); 
+      }
     }
   };
-
   const handleHabilitarMes = async (e: React.FormEvent) => {
     e.preventDefault();
     setProcesandoMes(true);
@@ -376,7 +516,7 @@ export default function AdminReportes() {
 
       notifyWithSound('Actividad modificada exitosamente', 'success');
       setActividadEnEdicion(null);
-      seleccionarReporte(reporteSeleccionado, true); 
+      await seleccionarReporte(reporteSeleccionado, true);
       
     } catch (error: any) { 
       notifyWithSound('Error al guardar: ' + error.message, 'error'); 
@@ -385,19 +525,27 @@ export default function AdminReportes() {
   };
 
   const snapshotParaPDF = useMemo(() => {
-    if (!reporteSeleccionado || cargandoDetalle) return null; 
+    if (!reporteSeleccionado) return null;
+
     return {
       ...reporteSeleccionado,
-      actividades: ocultarAnuladasPDF 
-        ? reporteSeleccionado.actividades?.filter(a => !a.anulada) 
-        : reporteSeleccionado.actividades
+      actividades: ocultarAnuladasPDF
+        ? (reporteSeleccionado.actividades || []).filter((a) => !a.anulada)
+        : (reporteSeleccionado.actividades || []),
     };
-  }, [reporteSeleccionado, ocultarAnuladasPDF, cargandoDetalle]);
+  }, [reporteSeleccionado, ocultarAnuladasPDF]);
 
   // Memorizamos el documento en sí
-  const pdfDocument = useMemo(() => {
+  const pdfDocument = useMemo<PDFDocumentElement | null>(() => {
     if (!snapshotParaPDF || categoriasDB.length === 0) return null;
-    return <ReportePDF snapshot={snapshotParaPDF} categorias={categoriasDB} acciones={accionesDB} />;
+
+    return (
+      <ReportePDF
+        snapshot={snapshotParaPDF}
+        categorias={categoriasDB}
+        acciones={accionesDB}
+      />
+    ) as PDFDocumentElement;
   }, [snapshotParaPDF, categoriasDB, accionesDB]);
 
   const reportesFiltrados = reportes.filter(r => {
@@ -670,54 +818,30 @@ export default function AdminReportes() {
               <button onClick={() => seleccionarReporte(reporteSeleccionado, true)} className="text-[#00689D] flex w-full sm:w-auto justify-center items-center gap-1.5 text-xs font-bold bg-blue-50 px-3 py-2 rounded-lg hover:bg-blue-100"><RefreshCw size={14}/> Refrescar</button>
             </div>
             
-            {/* Si Supabase está trabajando, mostramos el loader principal */}
-            {cargandoDetalle || categoriasDB.length === 0 ? (
+            {/*
+              Si se está refrescando el mismo expediente, conservamos el PDF
+              visible y mostramos el loader encima. Así evitamos desmontar el
+              PDFViewer y provocar parpadeos o reconstrucciones innecesarias.
+            */}
+            {categoriasDB.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-gray-50/50">
                 <Loader2 size={48} className="animate-spin text-[#00689D] mb-4" />
-                <p className="font-bold text-gray-600">Descargando información completa...</p>
+                <p className="font-bold text-gray-600">Cargando información...</p>
                 <p className="text-xs mt-1">Conectando con la base de datos</p>
               </div>
             ) : (
-              <div className="flex-1 flex flex-col xl:flex-row overflow-y-auto lg:overflow-hidden">
-                
-                {/* VISTA PARA COMPUTADORAS (CERO PARPADEOS) */}
-                <div className="hidden md:flex w-full h-full bg-gray-100 relative items-center justify-center border-b border-gray-200 xl:border-b-0 order-2 xl:order-1">
-                  {pdfDocument ? (
-                    <BlobProvider document={pdfDocument}>
-                      {({ url, loading, error }) => {
-                        if (loading || !url) {
-                          return (
-                            <div className="flex flex-col items-center justify-center text-gray-400 gap-3">
-                              <Loader2 size={48} className="animate-spin text-[#00689D]" />
-                              <h3 className="font-bold text-gray-600">Generando documento...</h3>
-                              <p className="text-xs">Renderizando evidencias y tablas</p>
-                            </div>
-                          );
-                        }
-                        if (error) {
-                          return (
-                            <div className="flex flex-col items-center text-red-500 gap-2">
-                              <AlertTriangle size={48} />
-                              <p className="font-bold">Error al construir el PDF</p>
-                            </div>
-                          );
-                        }
-                        return (
-                          <iframe 
-                            src={`${url}#toolbar=1&navpanes=0&view=FitH`} 
-                            className="w-full h-full border-none bg-white" 
-                            title="Reporte PDF"
-                          />
-                        );
-                      }}
-                    </BlobProvider>
+              <div className="flex-1 min-h-0 flex flex-col xl:flex-row overflow-y-auto lg:overflow-hidden relative">
+                {/* VISTA PARA COMPUTADORAS */}
+                <div className="hidden md:flex flex-1 min-w-0 h-full bg-gray-100 relative items-center justify-center border-b border-gray-200 xl:border-b-0 order-2 xl:order-1 overflow-hidden">
+                  {snapshotParaPDF ? (
+                    <VisorPDFAislado document={pdfDocument} />
                   ) : (
                     <div className="text-gray-400 text-sm">Esperando datos...</div>
                   )}
                 </div>
 
                 {/* VISTA PARA CELULARES */}
-                <div className="md:hidden flex flex-col items-center justify-center w-full h-full bg-gray-100 p-6 text-center absolute inset-0 z-10 order-2 xl:order-1">
+                <div className="md:hidden flex flex-col items-center justify-center w-full min-h-[420px] bg-gray-100 p-6 text-center order-2 xl:order-1">
                   <FileText size={64} className="text-gray-300 mb-4" />
                   <h3 className="font-bold text-gray-700 mb-2">Previsualización no disponible en móviles</h3>
                   <p className="text-xs text-gray-500 mb-6">Descarga el PDF para verlo en el visor de tu dispositivo.</p>
@@ -765,6 +889,15 @@ export default function AdminReportes() {
                     )}
                   </div>
                 </div>
+
+                {cargandoDetalle && (
+                  <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/60 backdrop-blur-[1px]">
+                    <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
+                      <Loader2 size={18} className="animate-spin text-[#00689D]" />
+                      <span className="text-sm font-bold text-gray-700">Actualizando expediente...</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
