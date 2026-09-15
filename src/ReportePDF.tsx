@@ -493,7 +493,7 @@ if (actividad.actividad_sostenibilidad) {
                 {/* --- LADO IZQUIERDO: Beneficiarios --- */}
                 <View style={[styles.w60, { borderRightWidth: 1, borderColor: '#000', flexDirection: 'column' }]}>
                   
-                  <View style={[styles.row, { minHeight: 36, borderBottomWidth: 0 }]}> 
+                  <View style={[styles.row, { minHeight: 36, borderBottomWidth: 0 , backgroundColor: '#DEDEDE'}]}> 
                     <View style={[styles.w50, { borderRightWidth: 1, borderColor: '#000', flexDirection: 'column' }]}>
                       <View style={{ flex: 1, borderBottomWidth: 1, borderColor: '#000', justifyContent: 'center' }}><Text style={styles.textCenterBold}>Beneficiarios</Text></View>
                       {/* <View style={{ flex: 1, justifyContent: 'center', borderBottomWidth: 1, borderColor: '#000' }}><Text style={styles.textCenterBold}>Tipo</Text></View> */}
@@ -502,7 +502,7 @@ if (actividad.actividad_sostenibilidad) {
                       <View style={{ flex: 1, borderBottomWidth: 1, borderColor: '#000', justifyContent: 'center' }}><Text style={styles.textCenterBold}>Total</Text></View>
                       
                     </View>
-                    <View style={[styles.w30, { flexDirection: 'column' }]}>
+                    <View style={[styles.w30, { flexDirection: 'column' , backgroundColor: '#DEDEDE' }]}>
                       <View style={{ flex: 1, borderBottomWidth: 1, borderColor: '#000', justifyContent: 'center' }}><Text style={styles.textCenterBold}>Sexo (H/M)</Text></View>
                       <View style={{ flex: 1, flexDirection: 'row', borderBottomWidth: 1, borderColor: '#000' }}>
                         <View style={{ width: '50%', borderRightWidth: 1, borderColor: '#000', justifyContent: 'center' }}><Text style={styles.textCenterBold}>H</Text></View>
