@@ -306,7 +306,6 @@ export default function CatalogoPrograma() {
   const eliminarHorario = (index: number) => { setSistema(prev => ({ ...prev, horarios: prev.horarios.filter((_, i) => i !== index) })); };
   const guardarRed = async () => { /* logica redes */ };
   const iniciarEdicionRed = (red: RedSocial) => { setEditandoRedId(red.id); setNuevaRed({ nombre: red.nombre, url: red.url }); };
-  const cancelarEdicionRed = () => { setEditandoRedId(null); setNuevaRed({ nombre: "Facebook", url: "" }); };
   const ejecutarEliminarRed = async () => { /* logica redes */ setIsProcessingAction(false); setDialogoConfirmacion({ isOpen: false, idRed: null }); };
 
 
