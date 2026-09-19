@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../../lib/supabase";
 import { 
   Save, Plus, Trash2, Mail, Phone, MapPin, 
-  Clock, Loader2, Link as LinkIcon, UploadCloud, Edit2, X, Eye, EyeOff, ImageIcon, GripVertical, Check
+  Clock, Loader2, Link as  UploadCloud, Edit2, X, Eye, EyeOff, ImageIcon, GripVertical, Check
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -198,7 +198,7 @@ export default function CatalogoPrograma() {
 
   const [dialogoConfirmacion, setDialogoConfirmacion] = useState<{ isOpen: boolean; idRed: number | null; }>({ isOpen: false, idRed: null });
   const [dialogoConfBanner, setDialogoConfBanner] = useState<{ isOpen: boolean; idBanner: string | null; }>({ isOpen: false, idBanner: null });
-  const [isProcessingAction, setIsProcessingAction] = useState(false);
+  const [, setIsProcessingAction] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
