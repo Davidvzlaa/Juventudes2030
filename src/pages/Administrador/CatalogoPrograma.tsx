@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../../lib/supabase";
 import { 
-  Save, Plus, Trash2, Globe, Mail, Phone, MapPin, 
-  Clock, Loader2, Link as LinkIcon, UploadCloud, Edit2, X, Check, AlertCircle, Eye, EyeOff, ImageIcon
+  Save, Plus, Trash2, Mail, Phone, MapPin, 
+  Clock, Loader2, Link as  UploadCloud, Edit2, X,  Eye, EyeOff, ImageIcon
 } from "lucide-react";
 import { toast } from "sonner";
 
