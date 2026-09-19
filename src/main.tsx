@@ -169,8 +169,8 @@ export default function App() {
           <Route path="/" element={<PaginaPrincipal />} />
           <Route path="/login" element={<Login />} />
           <Route path="/contacto" element={<Contacto />} />
-          <Route path="/resultados-seleccion" element={<ResultadosSeleccion />} />
-          <Route path="/acercade" element={<AcercaDe />} />
+          <Route path="/resultados" element={<ResultadosSeleccion />} />
+          <Route path="/acerca de" element={<AcercaDe />} />
 
           {/* -------------------------------------
               RUTAS PROTEGIDAS: ADMINISTRADOR 

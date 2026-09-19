@@ -128,11 +128,14 @@ export default function Header() {
                 <Link to="/" className={navLinkClass}>
                   Inicio <span className={underlineClass}></span>
                 </Link>
-                <a href="/acercade" className={navLinkClass}>
+                <a href="/acerca de" className={navLinkClass}>
                   Acerca de <span className={underlineClass}></span>
                 </a>
                 <a href="/contacto" className={navLinkClass}>
                   Contacto <span className={underlineClass}></span>
+                </a>
+                <a href="/resultados" className={navLinkClass}>
+                  Resultados <span className={underlineClass}></span>
                 </a>
                 
                 {/* Botón de acceso institucional */}
@@ -208,9 +211,9 @@ export default function Header() {
               /* --- VISTA PÚBLICA MÓVIL --- */
               <div className="flex flex-col space-y-4">
                 <Link to="/" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Inicio</Link>
-                <a href="/acercade" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Acerca de</a>
+                <a href="/acerca de" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Acerca de</a>
                 <a href="/contacto" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Contacto</a>
-                
+                <a href="/resultados" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Resultados</a>
                 <div className="pt-6 mt-4 border-t border-gray-100">
                   <Link to="/Login" onClick={closeMenu} className="bg-[#04111f] text-white w-full py-4 rounded text-xs font-bold uppercase tracking-widest text-center shadow-lg block">
                     Acceder al Portal
