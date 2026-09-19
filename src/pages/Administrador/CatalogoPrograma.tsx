@@ -2,9 +2,26 @@ import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../../lib/supabase";
 import { 
   Save, Plus, Trash2, Mail, Phone, MapPin, 
-  Clock, Loader2, Link as UploadCloud, Edit2, X, Eye, EyeOff, ImageIcon
+  Clock, Loader2, Link as LinkIcon, UploadCloud, Edit2, X, Eye, EyeOff, ImageIcon, GripVertical, Check
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  rectSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 // ==========================================
 // INTERFACES 
@@ -89,6 +106,59 @@ const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | '
   }
 };
 
+// ==========================================
+// COMPONENTE PARA DRAG & DROP (Tarjeta de Banner)
+// ==========================================
+function SortableBannerCard({ 
+  banner, toggleBannerActivo, iniciarEdicionBanner, setDialogoConfBanner, isReordering 
+}: { 
+  banner: HeroBanner; toggleBannerActivo: any; iniciarEdicionBanner: any; setDialogoConfBanner: any; isReordering: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: banner.id || 'temp' });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : 'auto',
+  };
+
+  return (
+    <div 
+      ref={setNodeRef} 
+      style={style} 
+      className={`relative group overflow-hidden rounded-2xl border-2 transition-all 
+        ${isDragging ? 'shadow-xl scale-105 border-[#26BDE2]' : ''} 
+        ${!banner.is_active && !isDragging ? 'opacity-60 grayscale-[50%] border-gray-200' : 'border-transparent hover:border-[#26BDE2] shadow-sm'}
+        ${isReordering ? 'cursor-grab active:cursor-grabbing' : ''}
+      `}
+      {...(isReordering ? attributes : {})} 
+      {...(isReordering ? listeners : {})}
+    >
+      <div className="aspect-video w-full relative pointer-events-none">
+        <img src={banner.image_url} alt={banner.title} className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col justify-end p-4">
+          <span className="text-[10px] font-bold text-white bg-black/50 w-fit px-2 py-0.5 rounded-full mb-1">Orden: {banner.order_index}</span>
+          <h4 className="text-white font-bold text-sm truncate">{banner.title.replace('\n', ' ')}</h4>
+        </div>
+      </div>
+      
+      {!isReordering && (
+        <div className="absolute top-2 right-2 flex items-center gap-1 bg-white/90 backdrop-blur p-1 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity">
+          <button type="button" onClick={() => toggleBannerActivo(banner)} className={`p-1.5 rounded-lg ${banner.is_active ? 'text-green-600' : 'text-gray-500'}`}>{banner.is_active ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}</button>
+          <button type="button" onClick={() => iniciarEdicionBanner(banner)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg"><Edit2 className="w-4 h-4" /></button>
+          <button type="button" onClick={() => setDialogoConfBanner({ isOpen: true, idBanner: banner.id || null })} className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+        </div>
+      )}
+
+      {isReordering && (
+        <div className="absolute top-2 right-2 bg-white/90 backdrop-blur p-2 rounded-xl text-gray-500 shadow-sm">
+          <GripVertical size={20} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CatalogoPrograma() {
   const [sistema, setSistema] = useState<Sistema>({
     nombre: "", descripcion: "", direccion: "",
@@ -122,9 +192,18 @@ export default function CatalogoPrograma() {
   const [usaEnlacePersonalizado, setUsaEnlacePersonalizado] = useState(false);
   const [ordenesOcupados, setOrdenesOcupados] = useState<number[]>([]);
 
+  // Estados Drag & Drop
+  const [isReordering, setIsReordering] = useState(false);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
+
   const [dialogoConfirmacion, setDialogoConfirmacion] = useState<{ isOpen: boolean; idRed: number | null; }>({ isOpen: false, idRed: null });
   const [dialogoConfBanner, setDialogoConfBanner] = useState<{ isOpen: boolean; idBanner: string | null; }>({ isOpen: false, idBanner: null });
   const [isProcessingAction, setIsProcessingAction] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   // ==========================================
   // CARGA DE DATOS
@@ -150,22 +229,49 @@ export default function CatalogoPrograma() {
       
       if (dataBanners) {
         setBanners(dataBanners);
-        
-        // Calcular órdenes ocupados y el próximo orden disponible
         const ocupados = dataBanners.map(b => b.order_index);
         setOrdenesOcupados(ocupados);
-        
         let siguienteOrden = 1;
-        while (ocupados.includes(siguienteOrden)) {
-          siguienteOrden++;
-        }
-        
+        while (ocupados.includes(siguienteOrden)) { siguienteOrden++; }
         setFormBanner(prev => ({ ...prev, order_index: siguienteOrden }));
       }
     } catch (error) {
       notifyWithSound("Error al cargar la información", "error");
     } finally {
       setCargando(false);
+    }
+  };
+
+  // ==========================================
+  // LÓGICA DRAG & DROP BANNERS
+  // ==========================================
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setBanners((items) => {
+        const oldIndex = items.findIndex(item => item.id === active.id);
+        const newIndex = items.findIndex(item => item.id === over.id);
+        const nuevoArreglo = arrayMove(items, oldIndex, newIndex);
+        return nuevoArreglo.map((item, index) => ({ ...item, order_index: index + 1 }));
+      });
+    }
+  };
+
+  const guardarNuevoOrden = async () => {
+    setIsSavingOrder(true);
+    try {
+      const promesas = banners.map((banner, index) => 
+        supabase.from("hero_banners").update({ order_index: index + 1 }).eq("id", banner.id)
+      );
+      await Promise.all(promesas);
+      
+      notifyWithSound("Orden guardado exitosamente", "success");
+      setIsReordering(false);
+      cargarDatos();
+    } catch (error) {
+      notifyWithSound("Error al guardar el nuevo orden", "error");
+    } finally {
+      setIsSavingOrder(false);
     }
   };
 
@@ -191,7 +297,6 @@ export default function CatalogoPrograma() {
       let finalImageUrl = formBanner.image_url;
       
       if (archivoBanner) {
-        // Borrado explícito de la imagen anterior en Supabase Storage
         if (formBanner.image_url && formBanner.image_url.includes('imagenes/')) {
           const oldFileName = formBanner.image_url.split('/').pop();
           if (oldFileName) {
@@ -200,12 +305,10 @@ export default function CatalogoPrograma() {
             });
           }
         }
-        
         const fileExt = archivoBanner.name.split('.').pop();
         const fileName = `banner_${Date.now()}.${fileExt}`;
         const { error: uploadError } = await supabase.storage.from('imagenes').upload(fileName, archivoBanner);
         if (uploadError) throw uploadError;
-        
         finalImageUrl = supabase.storage.from('imagenes').getPublicUrl(fileName).data.publicUrl;
       }
 
@@ -237,26 +340,17 @@ export default function CatalogoPrograma() {
     setFormBanner(banner);
     setArchivoBanner(null);
     setPreviewBanner(banner.image_url);
-    
     const esPredefinido = PAGINAS_DISPONIBLES.some(p => p.value === banner.cta_link);
     setUsaEnlacePersonalizado(!esPredefinido);
-
-    // Permite al usuario mantener su número de orden actual aunque esté "ocupado" en el select
     setOrdenesOcupados(prev => prev.filter(o => o !== banner.order_index));
-
     window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
   };
 
   const cancelarEdicionBanner = () => {
     setEditandoBannerId(null);
-    
-    // Recalcular el siguiente orden libre al cancelar
     let siguienteOrden = 1;
     const todosOcupados = banners.map(b => b.order_index);
-    while (todosOcupados.includes(siguienteOrden)) {
-      siguienteOrden++;
-    }
-
+    while (todosOcupados.includes(siguienteOrden)) { siguienteOrden++; }
     setFormBanner({ ...bannerVacio, order_index: siguienteOrden });
     setArchivoBanner(null);
     setPreviewBanner("");
@@ -285,28 +379,73 @@ export default function CatalogoPrograma() {
       await supabase.from("hero_banners").delete().eq("id", dialogoConfBanner.idBanner);
       setBanners(banners.filter(b => b.id !== dialogoConfBanner.idBanner));
       notifyWithSound("Banner eliminado", "success");
-      cargarDatos(); // Para recalcular órdenes
+      cargarDatos();
     } catch (error) { notifyWithSound("Error al eliminar", "error"); } 
     finally { setIsProcessingAction(false); setDialogoConfBanner({ isOpen: false, idBanner: null }); }
   };
 
-  // RESTO DE MÉTODOS OMITIDOS (Son iguales y funcionan bien)
+  // MÉTODOS SISTEMA Y REDES
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, tipoId: string) => { if (e.target.files && e.target.files[0]) processFile(e.target.files[0], tipoId); };
   const handleDrop = (e: React.DragEvent<HTMLDivElement>, tipoId: string) => { e.preventDefault(); if (e.dataTransfer.files && e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0], tipoId); };
   const processFile = (file: File, tipoId: string) => { setArchivosLogo(prev => ({ ...prev, [tipoId]: file })); setPreviewsLogo(prev => ({ ...prev, [tipoId]: URL.createObjectURL(file) })); };
-  const guardarSistema = async (e: React.FormEvent) => { e.preventDefault(); setGuardando(true); try { let logotiposFinales = { ...sistema.logotipos }; const uploadPromises = Object.entries(archivosLogo).map(async ([tipoId, file]) => { const urlVieja = sistema.logotipos[tipoId]; if (urlVieja) { const urlParts = urlVieja.split('/'); const oldFileName = urlParts[urlParts.length - 1]; if (oldFileName) await supabase.storage.from('imagenes').remove([oldFileName]).catch(() => {}); } const fileName = `logo_${tipoId}_${Date.now()}.${file.name.split('.').pop()}`; await supabase.storage.from('imagenes').upload(fileName, file); logotiposFinales[tipoId] = supabase.storage.from('imagenes').getPublicUrl(fileName).data.publicUrl; }); await Promise.all(uploadPromises); const payload = { ...sistema, logotipos: logotiposFinales, fecha_actualizacion: new Date().toISOString() }; if (sistema.id) { await supabase.from("sistemas").update(payload).eq("id", sistema.id); } else { await supabase.from("sistemas").insert([{ ...payload, activo: true }]); } notifyWithSound("Información general actualizada", "success"); setArchivosLogo({}); setSistema(prev => ({ ...prev, logotipos: logotiposFinales })); } catch (error) { notifyWithSound("Error al guardar la información", "error"); } finally { setGuardando(false); } };
+  
+  const guardarSistema = async (e: React.FormEvent) => { 
+    e.preventDefault(); setGuardando(true); 
+    try { 
+      let logotiposFinales = { ...sistema.logotipos }; 
+      const uploadPromises = Object.entries(archivosLogo).map(async ([tipoId, file]) => { 
+        const urlVieja = sistema.logotipos[tipoId]; 
+        if (urlVieja) { 
+          const urlParts = urlVieja.split('/'); const oldFileName = urlParts[urlParts.length - 1]; 
+          if (oldFileName) await supabase.storage.from('imagenes').remove([oldFileName]).catch(() => {}); 
+        } 
+        const fileName = `logo_${tipoId}_${Date.now()}.${file.name.split('.').pop()}`; 
+        await supabase.storage.from('imagenes').upload(fileName, file); 
+        logotiposFinales[tipoId] = supabase.storage.from('imagenes').getPublicUrl(fileName).data.publicUrl; 
+      }); 
+      await Promise.all(uploadPromises); 
+      const payload = { ...sistema, logotipos: logotiposFinales, fecha_actualizacion: new Date().toISOString() }; 
+      if (sistema.id) { await supabase.from("sistemas").update(payload).eq("id", sistema.id); } 
+      else { await supabase.from("sistemas").insert([{ ...payload, activo: true }]); } 
+      notifyWithSound("Información general actualizada", "success"); 
+      setArchivosLogo({}); setSistema(prev => ({ ...prev, logotipos: logotiposFinales })); 
+    } catch (error) { notifyWithSound("Error al guardar la información", "error"); } 
+    finally { setGuardando(false); } 
+  };
+
   const agregarHorario = () => { if (!nuevoHorario.horas) return; setSistema(prev => ({ ...prev, horarios: [...prev.horarios, nuevoHorario] })); setNuevoHorario({ etiqueta: "", dias: "Lunes a Viernes", horas: "" }); };
   const eliminarHorario = (index: number) => { setSistema(prev => ({ ...prev, horarios: prev.horarios.filter((_, i) => i !== index) })); };
-  const guardarRed = async () => { /* ... */ };
+  
+  const guardarRed = async () => { 
+    if (!nuevaRed.url || !sistema.id) return;
+    try {
+      if (editandoRedId) {
+        await supabase.from("redes_sociales").update({ nombre: nuevaRed.nombre, url: nuevaRed.url }).eq("id", editandoRedId);
+        notifyWithSound("Red social actualizada con éxito", "success");
+      } else {
+        await supabase.from("redes_sociales").insert([{ sistema_id: sistema.id, nombre: nuevaRed.nombre, url: nuevaRed.url, activo: true }]);
+        notifyWithSound("Red social agregada con éxito", "success");
+      }
+      setEditandoRedId(null); setNuevaRed({ nombre: "Facebook", url: "" }); cargarDatos();
+    } catch (error) { notifyWithSound("Error al procesar la red social", "error"); }
+  };
+  
   const iniciarEdicionRed = (red: RedSocial) => { setEditandoRedId(red.id); setNuevaRed({ nombre: red.nombre, url: red.url }); };
-  const ejecutarEliminarRed = async () => { setIsProcessingAction(false); setDialogoConfirmacion({ isOpen: false, idRed: null }); };
-
+  const ejecutarEliminarRed = async () => { 
+    if (!dialogoConfirmacion.idRed) return;
+    setIsProcessingAction(true);
+    try {
+      await supabase.from("redes_sociales").delete().eq("id", dialogoConfirmacion.idRed);
+      setRedes(redes.filter(r => r.id !== dialogoConfirmacion.idRed));
+      notifyWithSound("Red social eliminada", "success");
+    } catch (error) { notifyWithSound("Error al eliminar la red social", "error"); }
+    finally { setIsProcessingAction(false); setDialogoConfirmacion({ isOpen: false, idRed: null }); }
+  };
 
   if (cargando && !sistema.nombre) {
     return <div className="flex justify-center items-center py-20"><Loader2 className="animate-spin text-[#00689D] w-10 h-10" /></div>;
   }
 
-  // Generar opciones para el Select de Orden (1 al 10)
   const opcionesOrden = Array.from({ length: 10 }, (_, i) => i + 1);
 
   return (
@@ -421,8 +560,33 @@ export default function CatalogoPrograma() {
           SECCIÓN: BANNERS (CARRUSEL INICIO)
       ========================================== */}
       <div className="mt-8 bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm">
-        <h2 className="text-xl font-bold text-gray-800 mb-2">Banners del Carrusel (Inicio)</h2>
-        <p className="text-gray-500 text-sm mb-6 border-b pb-4">Controla las imágenes y textos principales que se muestran en el Hero de la página.</p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 pb-4 border-b border-gray-100">
+          <div>
+            <h2 className="text-xl font-bold text-gray-800 mb-1">Banners del Carrusel (Inicio)</h2>
+            <p className="text-gray-500 text-sm">Controla las imágenes y textos principales que se muestran en el Hero.</p>
+          </div>
+          
+          {/* BOTONES DE REORGANIZAR */}
+          {banners.length > 1 && (
+            <div className="mt-4 sm:mt-0">
+              {isReordering ? (
+                <div className="flex gap-2">
+                  <button onClick={() => { setIsReordering(false); cargarDatos(); }} className="px-4 py-2 border border-gray-300 rounded-xl text-sm font-bold text-gray-700 bg-white hover:bg-gray-50">
+                    Cancelar
+                  </button>
+                  <button onClick={guardarNuevoOrden} disabled={isSavingOrder} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-bold hover:bg-green-700 disabled:opacity-50">
+                    {isSavingOrder ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                    Guardar Orden
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => { setIsReordering(true); cancelarEdicionBanner(); }} className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 border border-gray-200 rounded-xl text-sm font-bold hover:bg-gray-200 transition-colors">
+                  <GripVertical size={16} /> Reorganizar
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
@@ -432,29 +596,39 @@ export default function CatalogoPrograma() {
                 Aún no has agregado banners al carrusel.
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {banners.map(banner => (
-                  <div key={banner.id} className={`relative group overflow-hidden rounded-2xl border-2 transition-all ${!banner.is_active ? 'opacity-60 grayscale-[50%] border-gray-200' : 'border-transparent hover:border-[#26BDE2] shadow-sm'}`}>
-                    <div className="aspect-video w-full relative">
-                      <img src={banner.image_url} alt={banner.title} className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col justify-end p-4">
-                        <span className="text-[10px] font-bold text-white bg-black/50 w-fit px-2 py-0.5 rounded-full mb-1">Orden: {banner.order_index}</span>
-                        <h4 className="text-white font-bold text-sm truncate">{banner.title.replace('\n', ' ')}</h4>
-                      </div>
-                    </div>
-                    
-                    <div className="absolute top-2 right-2 flex items-center gap-1 bg-white/90 backdrop-blur p-1 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => toggleBannerActivo(banner)} className={`p-1.5 rounded-lg ${banner.is_active ? 'text-green-600' : 'text-gray-500'}`}>{banner.is_active ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}</button>
-                      <button onClick={() => iniciarEdicionBanner(banner)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg"><Edit2 className="w-4 h-4" /></button>
-                      <button onClick={() => setDialogoConfBanner({ isOpen: true, idBanner: banner.id || null })} className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                    </div>
+              // IMPLEMENTACIÓN DEL DND-KIT (Arrastrar y Soltar)
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={banners.map(b => b.id || '')} strategy={rectSortingStrategy}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {banners.map(banner => (
+                      <SortableBannerCard 
+                        key={banner.id} 
+                        banner={banner} 
+                        toggleBannerActivo={toggleBannerActivo} 
+                        iniciarEdicionBanner={iniciarEdicionBanner} 
+                        setDialogoConfBanner={setDialogoConfBanner} 
+                        isReordering={isReordering} 
+                      />
+                    ))}
                   </div>
-                ))}
-              </div>
+                </SortableContext>
+              </DndContext>
             )}
           </div>
 
-          <div className="lg:col-span-1">
+          {/* COLUMNA DERECHA: FORMULARIO */}
+          <div className="lg:col-span-1 relative">
+            
+            {/* Overlay bloqueador mientras reorganizas */}
+            {isReordering && (
+              <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] z-10 flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300">
+                <GripVertical size={32} className="text-gray-400 mb-2 opacity-50" />
+                <span className="text-gray-600 font-bold text-sm bg-white px-4 py-2 rounded-full shadow-sm">
+                  Guarda el orden para editar
+                </span>
+              </div>
+            )}
+
             <form onSubmit={guardarBanner} className={`p-5 rounded-2xl border transition-colors ${editandoBannerId ? 'bg-blue-50/50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
@@ -480,12 +654,8 @@ export default function CatalogoPrograma() {
                     </span>
                   </div>
                   <textarea 
-                    required 
-                    maxLength={MAX_CHARS.title}
-                    rows={2} 
-                    placeholder="Ej. Juventudes&#10;que transforman."
-                    value={formBanner.title} 
-                    onChange={(e) => setFormBanner({...formBanner, title: e.target.value})} 
+                    required maxLength={MAX_CHARS.title} rows={2} placeholder="Ej. Juventudes&#10;que transforman."
+                    value={formBanner.title} onChange={(e) => setFormBanner({...formBanner, title: e.target.value})} 
                     className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-[#00689D]/50 resize-none" 
                   />
                 </div>
@@ -498,11 +668,8 @@ export default function CatalogoPrograma() {
                     </span>
                   </div>
                   <textarea 
-                    maxLength={MAX_CHARS.description}
-                    rows={3} 
-                    placeholder="Breve texto descriptivo..."
-                    value={formBanner.description} 
-                    onChange={(e) => setFormBanner({...formBanner, description: e.target.value})} 
+                    maxLength={MAX_CHARS.description} rows={3} placeholder="Breve texto descriptivo..."
+                    value={formBanner.description} onChange={(e) => setFormBanner({...formBanner, description: e.target.value})} 
                     className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-[#00689D]/50 resize-none" 
                   />
                 </div>
@@ -516,38 +683,17 @@ export default function CatalogoPrograma() {
                   <div>
                     <div className="flex justify-between items-center mb-1">
                       <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Enlace a donde dirigirá</label>
-                      <button 
-                        type="button" 
-                        onClick={() => {
-                          setUsaEnlacePersonalizado(!usaEnlacePersonalizado);
-                          setFormBanner({...formBanner, cta_link: ""});
-                        }} 
-                        className="text-[10px] text-[#26BDE2] hover:underline font-bold"
-                      >
+                      <button type="button" onClick={() => { setUsaEnlacePersonalizado(!usaEnlacePersonalizado); setFormBanner({...formBanner, cta_link: ""}); }} className="text-[10px] text-[#26BDE2] hover:underline font-bold">
                         {usaEnlacePersonalizado ? "Usar lista" : "Escribir manual"}
                       </button>
                     </div>
 
                     {usaEnlacePersonalizado ? (
-                      <input 
-                        type="text" required placeholder="Ej. https://..."
-                        value={formBanner.cta_link} 
-                        onChange={(e) => setFormBanner({...formBanner, cta_link: e.target.value})}
-                        className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#00689D]/50"
-                      />
+                      <input type="text" required placeholder="Ej. https://..." value={formBanner.cta_link} onChange={(e) => setFormBanner({...formBanner, cta_link: e.target.value})} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#00689D]/50" />
                     ) : (
-                      <select
-                        required
-                        value={formBanner.cta_link}
-                        onChange={(e) => setFormBanner({...formBanner, cta_link: e.target.value})}
-                        className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#00689D]/50"
-                      >
+                      <select required value={formBanner.cta_link} onChange={(e) => setFormBanner({...formBanner, cta_link: e.target.value})} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#00689D]/50">
                         <option value="" disabled>Selecciona una página...</option>
-                        {PAGINAS_DISPONIBLES.map(pagina => (
-                          <option key={pagina.value} value={pagina.value}>
-                            {pagina.label}
-                          </option>
-                        ))}
+                        {PAGINAS_DISPONIBLES.map(pagina => (<option key={pagina.value} value={pagina.value}>{pagina.label}</option>))}
                       </select>
                     )}
                   </div>
@@ -556,19 +702,9 @@ export default function CatalogoPrograma() {
                 <div className="grid grid-cols-2 gap-3 items-center pt-2">
                   <div>
                     <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Orden de aparición</label>
-                    <select 
-                      required 
-                      value={formBanner.order_index} 
-                      onChange={(e) => setFormBanner({...formBanner, order_index: parseInt(e.target.value)})} 
-                      className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-[#00689D]/50"
-                    >
+                    <select required value={formBanner.order_index} onChange={(e) => setFormBanner({...formBanner, order_index: parseInt(e.target.value)})} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-[#00689D]/50">
                       {opcionesOrden.map(num => (
-                        <option 
-                          key={num} 
-                          value={num} 
-                          // Se deshabilita la opción si el número está en el array de ordenesOcupados (a menos que sea el que el admin está editando)
-                          disabled={ordenesOcupados.includes(num) && formBanner.order_index !== num}
-                        >
+                        <option key={num} value={num} disabled={ordenesOcupados.includes(num) && formBanner.order_index !== num}>
                           {num} {ordenesOcupados.includes(num) && formBanner.order_index !== num ? "(Ocupado)" : ""}
                         </option>
                       ))}
@@ -584,7 +720,7 @@ export default function CatalogoPrograma() {
 
                 <div className="flex gap-2 pt-4 border-t border-gray-200">
                   {editandoBannerId && <button type="button" onClick={cancelarEdicionBanner} className="flex-1 bg-white border border-gray-300 px-4 py-2.5 rounded-xl text-sm font-bold">Cancelar</button>}
-                  <button type="submit" disabled={guardandoBanner} className={`flex-1 flex justify-center items-center gap-2 text-white px-4 py-2.5 rounded-xl text-sm font-bold ${editandoBannerId ? 'bg-[#00689D]' : 'bg-[#26BDE2]'}`}>
+                  <button type="submit" disabled={guardandoBanner || isReordering} className={`flex-1 flex justify-center items-center gap-2 text-white px-4 py-2.5 rounded-xl text-sm font-bold ${editandoBannerId ? 'bg-[#00689D]' : 'bg-[#26BDE2]'} disabled:opacity-50`}>
                     {guardandoBanner ? <Loader2 className="w-4 h-4 animate-spin" /> : (editandoBannerId ? <Save className="w-4 h-4" /> : <Plus className="w-4 h-4" />)} {editandoBannerId ? "Actualizar" : "Agregar"}
                   </button>
                 </div>
