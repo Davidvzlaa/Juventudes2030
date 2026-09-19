@@ -126,7 +126,7 @@ export default function CatalogoPrograma() {
   // DIÁLOGOS
   const [dialogoConfirmacion, setDialogoConfirmacion] = useState<{ isOpen: boolean; idRed: number | null; }>({ isOpen: false, idRed: null });
   const [dialogoConfBanner, setDialogoConfBanner] = useState<{ isOpen: boolean; idBanner: string | null; }>({ isOpen: false, idBanner: null });
-  const [isProcessingAction, setIsProcessingAction] = useState(false);
+  const [, setIsProcessingAction] = useState(false);
 
   // ==========================================
   // CARGA INICIAL
