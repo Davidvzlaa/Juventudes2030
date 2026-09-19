@@ -128,7 +128,7 @@ export default function Header() {
                 <Link to="/" className={navLinkClass}>
                   Inicio <span className={underlineClass}></span>
                 </Link>
-                <a href="/acerca de" className={navLinkClass}>
+                <a href="/acercade" className={navLinkClass}>
                   Acerca de <span className={underlineClass}></span>
                 </a>
                 <a href="/contacto" className={navLinkClass}>
@@ -211,7 +211,7 @@ export default function Header() {
               /* --- VISTA PÚBLICA MÓVIL --- */
               <div className="flex flex-col space-y-4">
                 <Link to="/" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Inicio</Link>
-                <a href="/acerca de" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Acerca de</a>
+                <a href="/acercade" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Acerca de</a>
                 <a href="/contacto" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Contacto</a>
                 <a href="/resultados" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Resultados</a>
                 <div className="pt-6 mt-4 border-t border-gray-100">

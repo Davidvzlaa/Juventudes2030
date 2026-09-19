@@ -170,7 +170,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/contacto" element={<Contacto />} />
           <Route path="/resultados" element={<ResultadosSeleccion />} />
-          <Route path="/acerca de" element={<AcercaDe />} />
+          <Route path="/acercade" element={<AcercaDe />} />
 
           {/* -------------------------------------
               RUTAS PROTEGIDAS: ADMINISTRADOR 
