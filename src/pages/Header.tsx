@@ -208,8 +208,8 @@ export default function Header() {
               /* --- VISTA PÚBLICA MÓVIL --- */
               <div className="flex flex-col space-y-4">
                 <Link to="/" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Inicio</Link>
-                <a href="#acerca" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Acerca de</a>
-                <a href="#contacto" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Contacto</a>
+                <a href="/acercade" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Acerca de</a>
+                <a href="/contacto" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Contacto</a>
                 
                 <div className="pt-6 mt-4 border-t border-gray-100">
                   <Link to="/Login" onClick={closeMenu} className="bg-[#04111f] text-white w-full py-4 rounded text-xs font-bold uppercase tracking-widest text-center shadow-lg block">
