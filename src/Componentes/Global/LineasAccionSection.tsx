@@ -95,7 +95,13 @@ export default function ExplorarActividades() {
         .order("fecha_evento", { ascending: true }); 
 
       if (fechaFin) query = query.lte("fecha_evento", fechaFin);
-      if (municipiosSel.length > 0) query = query.in("municipio_id", municipiosSel);
+
+if (municipiosSel.length > 0) {
+  // Construye un string con los IDs seleccionados, ej: "1,2,3"
+  const idsString = municipiosSel.join(',');
+  // Busca actividades donde el municipio_id esté en la lista OR sea nulo
+  query = query.or(`municipio_id.in.(${idsString}),municipio_id.is.null`);
+}
 
       const { data, error } = await query;
       if (error) throw error;
@@ -280,10 +286,28 @@ export default function ExplorarActividades() {
             {municipiosSel.map((id) => {
               const mun = municipiosDB.find(m => m.id === id);
               if (!mun) return null;
+              
               return (
-                <Badge key={id} variant="secondary" className="flex items-center gap-1 bg-blue-50 text-[#00689D] hover:bg-blue-100 rounded-lg px-3 py-1">
+                <Badge 
+                  key={id} 
+                  variant="secondary" 
+                  className="flex items-center gap-1.5 bg-blue-50 text-[#00689D] hover:bg-blue-100 rounded-lg px-3 py-1"
+                >
                   {mun.nombre}
-                  <X className="ml-1 h-3 w-3 cursor-pointer hover:text-red-500" onClick={(e) => { e.stopPropagation(); toggleMunicipio(id); }}/>
+                  
+                  {/* Envolvemos la X en un botón para asegurar que registre el clic */}
+                  <button
+                    type="button"
+                    className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-red-100 hover:text-red-600 transition-colors"
+                    onClick={(e) => {
+                      e.preventDefault(); // Evita recargas de formulario si está dentro de uno
+                      e.stopPropagation(); // Evita que se abra el desplegable de fondo
+                      toggleMunicipio(id); // Quita el municipio
+                    }}
+                  >
+                    <X className="h-3 w-3 cursor-pointer" />
+                  </button>
+                  
                 </Badge>
               );
             })}
