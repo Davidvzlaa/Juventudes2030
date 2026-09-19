@@ -150,7 +150,7 @@ import EmbajaDashboard from './pages/Embajadores/EmbajaDashboard';
 // import EmbajaActividad from './pages/Embajadores/EmbajaActividad';
 import EmbajaReporte from './pages/Embajadores/EmbajaReporte';
 import EmbajaCalendario from './pages/Embajadores/EmbajaCalendario';
-
+import ResultadosSeleccion from './pages/ResultadosSeleccion';
 // ==========================================
 // UI COMPONENTES
 // ==========================================
@@ -169,6 +169,7 @@ export default function App() {
           <Route path="/" element={<PaginaPrincipal />} />
           <Route path="/login" element={<Login />} />
           <Route path="/contacto" element={<Contacto />} />
+          <Route path="/resultados-seleccion" element={<ResultadosSeleccion />} />
           <Route path="/acercade" element={<AcercaDe />} />
 
           {/* -------------------------------------
