@@ -1698,13 +1698,6 @@ export default function AdminUsuariosDinamico() {
       return;
     }
 
-    if (!formUsuario.apellido.trim()) {
-      toast.error(
-        'El apellido es obligatorio.'
-      );
-      return;
-    }
-
     if (!formUsuario.correo.trim()) {
       toast.error(
         'El correo electrónico es obligatorio.'
@@ -1712,9 +1705,9 @@ export default function AdminUsuariosDinamico() {
       return;
     }
 
-    if (!formUsuario.fecha_nacimiento) {
+    if (!formUsuario.telefono.trim()) {
       toast.error(
-        'La fecha de nacimiento es obligatoria.'
+        'El teléfono es obligatorio.'
       );
       return;
     }
@@ -1787,7 +1780,7 @@ export default function AdminUsuariosDinamico() {
 
       const payloadUsuarioInfo = {
         nombre: formUsuario.nombre.trim(),
-        apellido: formUsuario.apellido.trim(),
+        apellido: formUsuario.apellido.trim() || null,
         correo: formUsuario.correo.trim().toLowerCase(),
         telefono:
           formUsuario.telefono.trim() || null,
@@ -2459,7 +2452,6 @@ export default function AdminUsuariosDinamico() {
 
                   <input
                     type="text"
-                    required
                     className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none"
                     value={
                       formUsuario.nombre
@@ -2570,6 +2562,7 @@ export default function AdminUsuariosDinamico() {
 
                   <input
                     type="tel"
+                    required
                     className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none"
                     value={
                       formUsuario.telefono
@@ -2593,7 +2586,6 @@ export default function AdminUsuariosDinamico() {
 
                   <input
                     type="date"
-                    required
                     className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none"
                     value={
                       formUsuario.fecha_nacimiento
