@@ -36,12 +36,14 @@ export default function Contacto() {
   const [sistemaInfo, setSistemaInfo] = useState<Sistema | null>(null);
   const [redesSociales, setRedesSociales] = useState<RedSocial[]>([]);
   const [cargandoInfo, setCargandoInfo] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
 
   // ==========================================
   // CARGA DE DATOS DESDE SUPABASE
   // ==========================================
-  useEffect(() => {
-    const fetchInformacion = async () => {
+  const fetchInformacion = async () => {
+      setCargandoInfo(true);
+      setErrorCarga(null);
       try {
         const { data: dataSis, error: errSis } = await supabase
           .from("sistemas")
@@ -67,14 +69,18 @@ export default function Contacto() {
 
           if (errRedes) throw errRedes;
           if (dataRedes) setRedesSociales(dataRedes);
+        } else {
+          setErrorCarga('No hay una configuración institucional activa.');
         }
       } catch (error) {
         console.error("Error al cargar la información de contacto:", error);
+        setErrorCarga('No se pudo cargar la información de contacto. Verifica la conexión o las policies públicas de Supabase.');
       } finally {
         setCargandoInfo(false);
       }
-    };
+  };
 
+  useEffect(() => {
     fetchInformacion();
   }, []);
 
@@ -121,6 +127,14 @@ export default function Contacto() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                {errorCarga && (
+                  <div role="alert" className="md:col-span-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center justify-between gap-3">
+                    <span>{errorCarga}</span>
+                    <button type="button" onClick={fetchInformacion} className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 font-bold hover:bg-red-100">
+                      Reintentar
+                    </button>
+                  </div>
+                )}
                 
                 {/* COLUMNA IZQUIERDA: Info General y Contacto */}
                 <div className="space-y-8">

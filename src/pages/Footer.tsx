@@ -45,20 +45,22 @@ export default function Footer() {
 
     const fetchFooterData = async () => {
       try {
-        const { data: dataSistema } = await supabase
+        const { data: dataSistema, error: sistemaError } = await supabase
           .from('sistemas')
           .select('nombre, direccion, horarios, correo, telefono, logotipos')
           .eq('activo', true)
           .maybeSingle();
 
+        if (sistemaError) throw sistemaError;
         if (dataSistema && isMounted) setSistema(dataSistema);
 
-        const { data: dataRedes } = await supabase
+        const { data: dataRedes, error: redesError } = await supabase
           .from('redes_sociales')
           .select('id, nombre, url')
           .eq('activo', true)
           .order('id', { ascending: true });
 
+        if (redesError) throw redesError;
         if (dataRedes && isMounted) setRedes(dataRedes);
 
       } catch (error) {
