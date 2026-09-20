@@ -261,7 +261,6 @@ export default function EmbajaReporte() {
         supabase.from('embajadores').select('municipios(nombre)').eq('usuario_id', userId).maybeSingle()
       ]);
 
-      const nombreEmbajador = `${resUser.data?.nombre || ''} ${resUser.data?.apellido || ''}`.trim() || 'Sin Nombre';
       const municipioEmbajador = (resEmb.data?.municipios as any)?.nombre || 'Desconocido';
 
       setUsuarioInfo({ nombre: resUser.data?.nombre || '', apellido: resUser.data?.apellido || '', municipio: municipioEmbajador });
