@@ -9,7 +9,7 @@ export default function ModalCambioPassword() {
   const [loading, setLoading] = useState(false);
   
   // Extraemos los datos del usuario logueado
-  const { usuarioDatos } = useAuth();
+  useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
