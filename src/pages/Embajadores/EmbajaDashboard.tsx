@@ -694,7 +694,7 @@ import {
   MapPin, Clock, ArrowRight, ChevronRight, Activity, Globe, User,
   X, CheckCircle2, Edit2, Activity as ActivityIcon, Trash2, Ban
 } from 'lucide-react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
