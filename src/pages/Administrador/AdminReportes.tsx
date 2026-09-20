@@ -169,6 +169,7 @@ export default function AdminReportes() {
   const [showDeshabilitarModal, setShowDeshabilitarModal] = useState(false);
   const [mesDeshabilitar, setMesDeshabilitar] = useState<string>('');
   const [procesandoDeshabilitar, setProcesandoDeshabilitar] = useState(false);
+  const [accionCierre, setAccionCierre] = useState<'deshabilitar' | 'eliminar'>('deshabilitar');
 
   useEffect(() => {
     if (showHabilitarModal || showDeshabilitarModal || modalAnular.visible || actividadEnEdicion || modalRevision.visible) {
@@ -392,14 +393,39 @@ export default function AdminReportes() {
     setProcesandoDeshabilitar(true);
     try {
       const [mesSeleccionado, anioSeleccionado] = mesDeshabilitar.split('-').map(Number);
-      const { error } = await supabase.from('reportes').update({ estado: 'Deshabilitado' })
-        .eq('mes', mesSeleccionado).eq('anio', anioSeleccionado).in('estado', ['Borrador', 'Regresado']); 
       
-      if (error) throw error;
-      notifyWithSound("Mes deshabilitado con éxito.", "success");
+      if (accionCierre === 'deshabilitar') {
+        const { error } = await supabase.from('reportes')
+          .update({ estado: 'Deshabilitado' })
+          .eq('mes', mesSeleccionado)
+          .eq('anio', anioSeleccionado)
+          .in('estado', ['Borrador', 'Regresado']); 
+        
+        if (error) throw error;
+        notifyWithSound("Mes deshabilitado con éxito.", "success");
+
+      } else {
+        const { error } = await supabase.from('reportes')
+          .delete()
+          .eq('mes', mesSeleccionado)
+          .eq('anio', anioSeleccionado);
+          
+        if (error) throw error;
+        notifyWithSound("Mes eliminado por completo.", "success");
+        
+        if (reporteSeleccionado && reporteSeleccionado.mes === mesSeleccionado && reporteSeleccionado.anio === anioSeleccionado) {
+          setReporteSeleccionado(null);
+        }
+      }
+
       setShowDeshabilitarModal(false);
+      setAccionCierre('deshabilitar'); 
+      setMesDeshabilitar('');
       fetchData(); 
-    } catch (error: any) { notifyWithSound("Error al deshabilitar el mes: " + error.message, "error"); } 
+
+    } catch (error: any) { 
+      notifyWithSound(`Error al ${accionCierre} el mes: ` + error.message, "error"); 
+    } 
     finally { setProcesandoDeshabilitar(false); }
   };
 
@@ -936,26 +962,59 @@ export default function AdminReportes() {
 
       {/* ================= MODAL CERRAR MES ================= */}
       {showDeshabilitarModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-2 flex flex-col overflow-hidden">
             <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-              <h3 className="font-black text-lg text-gray-800 flex items-center gap-2"><Lock size={20} className="text-red-600"/> Cerrar Mes</h3>
+              <h3 className="font-black text-lg text-gray-800 flex items-center gap-2"><Lock size={20} className="text-red-600"/> Gestión de Periodo</h3>
               <button onClick={() => setShowDeshabilitarModal(false)} className="p-1 hover:bg-gray-200 rounded-full text-gray-500"><X size={20} /></button>
             </div>
-            <form onSubmit={handleDeshabilitarMes} className="p-4 md:p-6 space-y-4">
-              <p className="text-sm text-gray-600">Esta acción bloqueará todos los reportes "Borrador". Los embajadores ya no podrán agregar ni editar información.</p>
+            
+            <form onSubmit={handleDeshabilitarMes} className="p-4 md:p-6 space-y-5">
+              
+              {/* SELECTOR DE ACCIÓN */}
+              <div className="space-y-3">
+                <label className="block text-sm font-bold text-gray-700">¿Qué deseas hacer?</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setAccionCierre('deshabilitar')}
+                    className={`p-3 rounded-xl border text-left flex flex-col gap-1 transition-all ${accionCierre === 'deshabilitar' ? 'bg-amber-50 border-amber-500 ring-1 ring-amber-500' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                  >
+                    <span className={`text-sm font-bold ${accionCierre === 'deshabilitar' ? 'text-amber-700' : 'text-gray-700'}`}>Deshabilitar</span>
+                    <span className="text-[10px] text-gray-500">Cierra el periodo para envíos (Borradores).</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAccionCierre('eliminar')}
+                    className={`p-3 rounded-xl border text-left flex flex-col gap-1 transition-all ${accionCierre === 'eliminar' ? 'bg-red-50 border-red-500 ring-1 ring-red-500' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                  >
+                    <span className={`text-sm font-bold ${accionCierre === 'eliminar' ? 'text-red-700' : 'text-gray-700'}`}>Eliminar al 100%</span>
+                    <span className="text-[10px] text-gray-500">Borra todos los registros del mes. Útil si se abrió por error.</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 p-3 rounded-xl border border-gray-100">
+                <p className="text-xs text-gray-600">
+                  {accionCierre === 'deshabilitar' 
+                    ? 'Esta acción bloqueará todos los reportes "Borrador" del periodo seleccionado. Los embajadores ya no podrán agregar ni editar información.' 
+                    : 'Esta acción ELIMINARÁ DE FORMA PERMANENTE todos los reportes del periodo seleccionado.'}
+                </p>
+              </div>
+
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">Seleccionar Periodo</label>
-                <select required className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:border-red-500 outline-none" value={mesDeshabilitar} onChange={e => setMesDeshabilitar(e.target.value)}>
+                <select required className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:border-red-500 outline-none bg-white" value={mesDeshabilitar} onChange={e => setMesDeshabilitar(e.target.value)}>
                   <option value="" disabled>-- Selecciona un periodo --</option>
                   {mesesDisponibles.map((m, i) => <option key={i} value={`${m.mes}-${m.anio}`}>{m.nombre}</option>)}
                 </select>
               </div>
-              <div className="pt-4 flex flex-col-reverse sm:flex-row gap-3">
+              
+              <div className="pt-2 flex flex-col-reverse sm:flex-row gap-3">
                 <button type="button" onClick={() => setShowDeshabilitarModal(false)} className="flex-1 py-2.5 rounded-xl font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-100">Cancelar</button>
-                <button type="submit" disabled={procesandoDeshabilitar} className="flex-1 flex justify-center items-center gap-2 py-2.5 rounded-xl font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-70">
+                <button type="submit" disabled={procesandoDeshabilitar} className={`flex-1 flex justify-center items-center gap-2 py-2.5 rounded-xl font-bold text-white disabled:opacity-70 transition-colors ${accionCierre === 'eliminar' ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-500 hover:bg-amber-600'}`}>
                   {procesandoDeshabilitar ? <Loader2 className="animate-spin" size={16} /> : null}
-                  Confirmar Cierre
+                  {accionCierre === 'eliminar' ? 'Confirmar Eliminación' : 'Confirmar Cierre'}
                 </button>
               </div>
             </form>
