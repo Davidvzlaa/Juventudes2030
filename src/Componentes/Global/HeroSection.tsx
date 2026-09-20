@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useInView } from "react-intersection-observer";
 import { ArrowRight } from "lucide-react";
+import { Link } from "react-router-dom";
 import Autoplay from "embla-carousel-autoplay";
 import { supabase } from "../../lib/supabase";
 import {
@@ -81,10 +82,10 @@ export default function HeroSection() {
                 Un espacio para visibilizar, impulsar y conectar las acciones de las juventudes que trabajan por comunidades más justas, inclusivas y sostenibles.
               </p>
               <div className="mt-6">
-                <a href="/acercade" className="group inline-flex items-center gap-3 bg-white px-6 py-3 text-sm font-semibold text-[#061A2D] transition hover:bg-gray-100">
+                <Link to="/acercade" className="group inline-flex items-center gap-3 bg-white px-6 py-3 text-sm font-semibold text-[#061A2D] transition hover:bg-gray-100">
                   Conoce el proyecto
                   <ArrowRight size={17} className="transition-transform group-hover:translate-x-1" />
-                </a>
+                </Link>
               </div>
             </div>
           </div>

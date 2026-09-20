@@ -139,6 +139,8 @@ export default function AdminReportes() {
   const [ocultarAnuladasPDF, setOcultarAnuladasPDF] = useSessionStorage<boolean>('admin_ocultar_anuladas', false);
 
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  const [cargandoDatos, setCargandoDatos] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
 
   // Edición de actividad
   const [actividadEnEdicion, setActividadEnEdicion] = useState<any | null>(null);
@@ -157,6 +159,7 @@ export default function AdminReportes() {
   const [odsDB, setOdsDB] = useState<OdsDB[]>([]); 
   const [municipiosList, setMunicipiosList] = useState<MunicipioDB[]>([]);
   const [sectoresDB, setSectoresDB] = useState<any[]>([]); 
+  const [areasSostenibilidadDB, setAreasSostenibilidadDB] = useState<{ id: number; nombre: string }[]>([]);
   const [mesesDisponibles, setMesesDisponibles] = useState<{mes: number, anio: number, nombre: string}[]>([]);
 
   const [showHabilitarModal, setShowHabilitarModal] = useState(false);
@@ -177,24 +180,31 @@ export default function AdminReportes() {
   }, [showHabilitarModal, showDeshabilitarModal, modalAnular.visible, actividadEnEdicion, modalRevision.visible]);
 
   const fetchData = async () => {
+    setCargandoDatos(true);
+    setErrorCarga(null);
     try {
-      const [catRes, accRes, odsRes, munRes, secRes, embRes, repRes] = await Promise.all([
+      const [catRes, accRes, odsRes, munRes, secRes, areasRes, embRes, repRes] = await Promise.all([
         supabase.from('categorias_beneficiarios').select('id, nombre').eq('activo', true).order('id'),
         supabase.from('tipos_accion').select('id, nombre').eq('activo', true).order('id'),
         supabase.from('ods').select('id, numero, nombre, categoria_sostenibilidad').eq('activo', true).order('numero'),
         supabase.from('municipios').select('id, nombre').eq('activo', true).order('nombre'),
         supabase.from('sectores_poblacion').select('id, nombre').eq('activo', true).order('id'),
+        supabase.from('areas_sostenibilidad').select('id, nombre').eq('activo', true).order('id'),
         supabase.from('embajadores').select('usuario_id, municipios(nombre)'),
         supabase.from('reportes')
           .select(`id, mes, anio, estado, usuario_id, usuarios!reportes_usuario_id_fkey(nombre, apellido)`)
           .order('anio', { ascending: false }).order('mes', { ascending: false })
       ]);
 
+      const errores = [catRes.error, accRes.error, odsRes.error, munRes.error, secRes.error, areasRes.error, embRes.error, repRes.error].filter(Boolean);
+      if (errores.length > 0) throw errores[0];
+
       if (catRes.data) setCategoriasDB(catRes.data);
       if (accRes.data) setAccionesDB(accRes.data);
       if (odsRes.data) setOdsDB(odsRes.data);
       if (munRes.data) setMunicipiosList(munRes.data);
       if (secRes.data) setSectoresDB(secRes.data);
+      if (areasRes.data) setAreasSostenibilidadDB(areasRes.data);
 
       const embMap = new Map();
       // @ts-ignore
@@ -219,7 +229,12 @@ export default function AdminReportes() {
         });
         setMesesDisponibles(Array.from(unicos.values()));
       }
-    } catch (error) { console.error("Error cargando datos:", error); }
+    } catch (error: any) {
+      console.error("Error cargando datos:", error);
+      setErrorCarga(error?.message || 'No fue posible cargar los reportes.');
+    } finally {
+      setCargandoDatos(false);
+    }
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -277,13 +292,17 @@ export default function AdminReportes() {
             .from('evidencias')
             .createSignedUrls(pathsToSign, 3600); 
 
-          if (!signedErr && signedData) {
-            signedData.forEach(item => {
-              if (!item.error && item.signedUrl) {
-                signedUrlsMap.set(item.path || '', item.signedUrl);
-              }
-            });
+          if (signedErr) throw signedErr;
+          if (!signedData) throw new Error('No se pudieron generar las URLs de las evidencias.');
+
+          const evidenciasFallidas = signedData.filter((item) => item.error || !item.signedUrl);
+          if (evidenciasFallidas.length > 0) {
+            throw new Error(`No se pudieron abrir ${evidenciasFallidas.length} evidencia(s).`);
           }
+
+          signedData.forEach(item => {
+            if (item.path && item.signedUrl) signedUrlsMap.set(item.path, item.signedUrl);
+          });
         }
 
         actividadesCompletas = actividadesCompletas.map((act: any) => ({
@@ -374,7 +393,7 @@ export default function AdminReportes() {
     try {
       const [mesSeleccionado, anioSeleccionado] = mesDeshabilitar.split('-').map(Number);
       const { error } = await supabase.from('reportes').update({ estado: 'Deshabilitado' })
-        .eq('mes', mesSeleccionado).eq('anio', anioSeleccionado).in('estado', ['Borrador', 'Rechazada']); 
+        .eq('mes', mesSeleccionado).eq('anio', anioSeleccionado).in('estado', ['Borrador', 'Regresado']); 
       
       if (error) throw error;
       notifyWithSound("Mes deshabilitado con éxito.", "success");
@@ -396,10 +415,22 @@ export default function AdminReportes() {
     setProcesandoAnulacion(true);
     try {
       const { data: authData } = await supabase.auth.getUser();
-      const { error } = await supabase.from('reporte_act').upsert({
+      const payload = {
         reporte_id: reporteSeleccionado.id, actividad_id: actividadId, estado_validacion: nuevoEstadoVal,
         comentarios_admin: comentario, validado_por_usuario_id: authData.user?.id, fecha_validacion: new Date().toISOString()
-      }, { onConflict: 'reporte_id,actividad_id' });
+      };
+      const { data: existente, error: consultaError } = await supabase
+        .from('reporte_act')
+        .select('id')
+        .eq('reporte_id', reporteSeleccionado.id)
+        .eq('actividad_id', actividadId)
+        .maybeSingle();
+
+      if (consultaError) throw consultaError;
+
+      const { error } = existente
+        ? await supabase.from('reporte_act').update(payload).eq('id', existente.id)
+        : await supabase.from('reporte_act').insert(payload);
 
       if (error) throw error;
 
@@ -545,7 +576,6 @@ export default function AdminReportes() {
         calle: actividadEnEdicion.domicilio?.calle || null, 
         colonia: actividadEnEdicion.domicilio?.colonia || null,
         rango_edad_beneficiarios: actividadEnEdicion.es_externa ? null : actividadEnEdicion.rango_edad, 
-        rango_edad: actividadEnEdicion.es_externa ? null : actividadEnEdicion.rango_edad,
         descripcion: actividadEnEdicion.descripcion,
         es_externa: actividadEnEdicion.es_externa || false,
         organizador_externo: actividadEnEdicion.es_externa ? actividadEnEdicion.organizador_externo : null,
@@ -555,7 +585,8 @@ export default function AdminReportes() {
       if (errAct) throw errAct;
 
       // Actualizar Relaciones
-      await supabase.from('actividad_beneficiarios').delete().eq('actividad_id', actId);
+      const { error: benefDeleteError } = await supabase.from('actividad_beneficiarios').delete().eq('actividad_id', actId);
+      if (benefDeleteError) throw benefDeleteError;
       if (!actividadEnEdicion.es_externa && actividadEnEdicion.beneficiarios) {
         const benefPayload = Object.entries(actividadEnEdicion.beneficiarios)
           .filter(([id]) => Number(id) !== 99)
@@ -565,10 +596,14 @@ export default function AdminReportes() {
             total: parseInt(val.hombres || '0', 10) + parseInt(val.mujeres || '0', 10),
             actualizado_en: new Date().toISOString()
           })).filter(b => b.total > 0);
-        if (benefPayload.length > 0) await supabase.from('actividad_beneficiarios').insert(benefPayload);
+        if (benefPayload.length > 0) {
+          const { error: benefInsertError } = await supabase.from('actividad_beneficiarios').insert(benefPayload);
+          if (benefInsertError) throw benefInsertError;
+        }
       }
 
-      await supabase.from('actividad_sectores').delete().eq('actividad_id', actId);
+      const { error: sectorDeleteError } = await supabase.from('actividad_sectores').delete().eq('actividad_id', actId);
+      if (sectorDeleteError) throw sectorDeleteError;
       if (!actividadEnEdicion.es_externa && actividadEnEdicion.sectores) {
         const secPayload = Object.entries(actividadEnEdicion.sectores)
           .map(([id, val]: [string, any]) => ({
@@ -577,31 +612,44 @@ export default function AdminReportes() {
             mujeres: parseInt(val.mujeres || '0', 10),
             total: parseInt(val.hombres || '0', 10) + parseInt(val.mujeres || '0', 10)
           })).filter(s => s.total > 0);
-        if (secPayload.length > 0) await supabase.from('actividad_sectores').insert(secPayload);
+        if (secPayload.length > 0) {
+          const { error: sectorInsertError } = await supabase.from('actividad_sectores').insert(secPayload);
+          if (sectorInsertError) throw sectorInsertError;
+        }
       }
 
-      await supabase.from('actividad_acciones').delete().eq('actividad_id', actId);
+      const { error: accionDeleteError } = await supabase.from('actividad_acciones').delete().eq('actividad_id', actId);
+      if (accionDeleteError) throw accionDeleteError;
       if (!isNaN(tipoAccionIdInt) && tipoAccionIdInt > 0) {
-        await supabase.from('actividad_acciones').insert({ actividad_id: actId, tipo_accion_id: tipoAccionIdInt, cantidad: 1, creado_en: new Date().toISOString(), actualizado_en: new Date().toISOString() });
+        const { error: accionInsertError } = await supabase.from('actividad_acciones').insert({ actividad_id: actId, tipo_accion_id: tipoAccionIdInt, cantidad: 1, creado_en: new Date().toISOString(), actualizado_en: new Date().toISOString() });
+        if (accionInsertError) throw accionInsertError;
       }
 
       const areasSeleccionadas = new Set<number>();
+      const normalizarArea = (nombre: string) => nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const areaEconomica = areasSostenibilidadDB.find((area) => /econ/.test(normalizarArea(area.nombre)));
+      const areaSocial = areasSostenibilidadDB.find((area) => /social|sociedad/.test(normalizarArea(area.nombre)));
+      const areaAmbiental = areasSostenibilidadDB.find((area) => /ambient|biosfer/.test(normalizarArea(area.nombre)));
       actividadEnEdicion.ods_seleccionados?.forEach((odsId: number) => {
         const cat = odsDB.find(o => o.id === odsId)?.categoria_sostenibilidad?.toLowerCase() || '';
-        if (cat.includes('econ')) areasSeleccionadas.add(1);
-        if (cat.includes('social') || cat.includes('sociedad')) areasSeleccionadas.add(2);
-        if (cat.includes('ambient') || cat.includes('biosfera')) areasSeleccionadas.add(3);
-        if (cat.includes('transversal') || cat.includes('alianza')) { areasSeleccionadas.add(1); areasSeleccionadas.add(2); areasSeleccionadas.add(3); }
+        if (cat.includes('econ') && areaEconomica) areasSeleccionadas.add(areaEconomica.id);
+        if ((cat.includes('social') || cat.includes('sociedad')) && areaSocial) areasSeleccionadas.add(areaSocial.id);
+        if ((cat.includes('ambient') || cat.includes('biosfera')) && areaAmbiental) areasSeleccionadas.add(areaAmbiental.id);
+        if (cat.includes('transversal') || cat.includes('alianza')) areasSostenibilidadDB.forEach((area) => areasSeleccionadas.add(area.id));
       });
 
-      await supabase.from('actividad_sostenibilidad').delete().eq('actividad_id', actId);
+      const { error: sostenibilidadDeleteError } = await supabase.from('actividad_sostenibilidad').delete().eq('actividad_id', actId);
+      if (sostenibilidadDeleteError) throw sostenibilidadDeleteError;
       if (areasSeleccionadas.size > 0) {
-        await supabase.from('actividad_sostenibilidad').insert(Array.from(areasSeleccionadas).map(areaId => ({ actividad_id: actId, area_id: areaId, creado_en: new Date().toISOString() })));
+        const { error: sostenibilidadInsertError } = await supabase.from('actividad_sostenibilidad').insert(Array.from(areasSeleccionadas).map(areaId => ({ actividad_id: actId, area_id: areaId, creado_en: new Date().toISOString() })));
+        if (sostenibilidadInsertError) throw sostenibilidadInsertError;
       }
 
-      await supabase.from('actividad_ods').delete().eq('actividad_id', actId);
+      const { error: odsDeleteError } = await supabase.from('actividad_ods').delete().eq('actividad_id', actId);
+      if (odsDeleteError) throw odsDeleteError;
       if (actividadEnEdicion.ods_seleccionados && actividadEnEdicion.ods_seleccionados.length > 0) {
-        await supabase.from('actividad_ods').insert(actividadEnEdicion.ods_seleccionados.map((odsId: number, idx: number) => ({ actividad_id: actId, ods_id: odsId, es_principal: idx === 0 })));
+        const { error: odsInsertError } = await supabase.from('actividad_ods').insert(actividadEnEdicion.ods_seleccionados.map((odsId: number, idx: number) => ({ actividad_id: actId, ods_id: odsId, es_principal: idx === 0 })));
+        if (odsInsertError) throw odsInsertError;
       }
 
       notifyWithSound('Actividad modificada exitosamente', 'success');
@@ -644,6 +692,17 @@ export default function AdminReportes() {
 
   return (
     <div className="flex flex-col h-auto lg:h-[calc(100vh-100px)] min-h-screen lg:min-h-0 relative p-2 md:p-4 bg-gray-50/50">
+      {cargandoDatos && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-800">
+          <Loader2 className="animate-spin" size={18} /> Cargando reportes y catálogos...
+        </div>
+      )}
+      {errorCarga && (
+        <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <span>{errorCarga}</span>
+          <button type="button" onClick={fetchData} className="rounded-lg border border-red-300 bg-white px-3 py-1.5 font-bold hover:bg-red-100">Reintentar</button>
+        </div>
+      )}
       
       {/* ================= MODAL REVISIÓN GLOBAL REPORTE ================= */}
       {modalRevision.visible && (

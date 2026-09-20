@@ -13,12 +13,34 @@ import { toast } from 'sonner';
 
 // MEJORA: Agregamos 'estado' explícitamente a la interfaz
 interface Actividad {
-  id: number; nombre: string; descripcion: string; fecha_evento: string; hora_inicio: string; hora_fin: string;
-  municipio_id: number; lugar: string; direccion: string; calle: string; colonia: string; estado?: string;
-  creado_por_usuario_id: string; municipios: { nombre: string }; creador: { nombre: string; apellido: string };
-  actividad_asistentes: { usuario_id: string; usuarios: { nombre: string; apellido: string } }[];
-  actividad_ods: { ods_id: number; ods: { numero: number; nombre: string } }[];
-  actividad_acciones: { tipo_accion_id: number; cantidad: number; tipos_accion: { nombre: string } }[];
+  id: number;
+  nombre: string;
+  descripcion?: string | null;
+  fecha_evento: string;
+  hora_inicio?: string | null;
+  hora_fin?: string | null;
+  municipio_id?: number | null;
+  lugar?: string | null;
+  direccion?: string | null;
+  calle?: string | null;
+  colonia?: string | null;
+  estado?: string | null;
+  creado_por_usuario_id?: string | null;
+  municipios?: { nombre: string } | null;
+  creador?: { nombre: string; apellido: string } | null;
+  actividad_asistentes?: {
+    usuario_id: string;
+    usuarios?: { nombre: string; apellido: string } | null;
+  }[];
+  actividad_ods?: {
+    ods_id: number;
+    ods?: { numero: number; nombre: string } | null;
+  }[];
+  actividad_acciones?: {
+    tipo_accion_id?: number | null;
+    cantidad: number;
+    tipos_accion?: { nombre: string } | null;
+  }[];
 }
 
 // MEJORA: Instanciamos el audio FUERA del componente para no crear múltiples instancias
@@ -127,64 +149,62 @@ export default function EmbajadorInicio() {
       }
 
       // ==========================================
-      // 2. MÉTRICAS OFICIALES (Validadas por el Administrador)
+      // 2. MÉTRICAS OFICIALES
       // ==========================================
-      
-      // IMPORTANTE: Cambia 'Validada' por la palabra exacta que usas en tu base de datos
-      // cuando un administrador aprueba/verifica el reporte final de la actividad.
-      const ESTADO_APROBADO = 'Validada'; 
+      // `actividades.estado` es el estado operativo del evento.
+      // La validación administrativa está en `reporte_act.estado_validacion`.
+      //
+      // Ajusta este valor si tu panel administrativo usa otro texto.
+      const VALIDACION_APROBADA = 'Aprobada';
 
-      // A) Obtener actividades que el usuario CREÓ y ya fueron aprobadas
-      const { data: actsCreadas } = await supabase.from('actividades')
-        .select('id, beneficiarios_directos, beneficiarios_indirectos, estado, actividad_ods(ods_id)')
-        .eq('creado_por_usuario_id', usuarioDatos.id)
-        .eq('estado', ESTADO_APROBADO) // <-- Filtro estricto
-        .is('fecha_eliminacion', null);
-
-      // B) Obtener actividades a las que el usuario SE UNIÓ y ya fueron aprobadas
-      const { data: actsUnidas } = await supabase.from('actividad_asistentes')
+      const { data: validaciones, error: validacionesError } = await supabase
+        .from('reporte_act')
         .select(`
           actividad_id,
+          estado_validacion,
+          reportes!inner (
+            id,
+            usuario_id,
+            fecha_eliminacion
+          ),
           actividades!inner (
-            id, beneficiarios_directos, beneficiarios_indirectos, estado,
+            id,
+            beneficiarios_directos,
+            beneficiarios_indirectos,
+            fecha_eliminacion,
             actividad_ods(ods_id)
           )
         `)
-        .eq('usuario_id', usuarioDatos.id)
-        .eq('actividades.estado', ESTADO_APROBADO) // <-- Filtro estricto en el Join
+        .eq('estado_validacion', VALIDACION_APROBADA)
+        .eq('reportes.usuario_id', usuarioDatos.id)
+        .is('reportes.fecha_eliminacion', null)
         .is('actividades.fecha_eliminacion', null);
 
-      // C) Combinar ambas listas evitando duplicados (por si el creador también se unió)
-      const mapaActividades = new Map();
-      
-      actsCreadas?.forEach(act => mapaActividades.set(act.id, act));
-      actsUnidas?.forEach(item => mapaActividades.set(item.actividad_id, item.actividades));
+      if (validacionesError) throw validacionesError;
 
-      const actividadesValidadas = Array.from(mapaActividades.values());
+      const actividadesValidadas = (validaciones ?? []).map((item: any) => item.actividades);
 
-      // --- CÁLCULO DE MÉTRICAS (Ahora todo se basa 100% en lo validado) ---
+      const actividadesUnicas = Array.from(
+        new Map(actividadesValidadas.map((act: any) => [act.id, act])).values()
+      );
 
-      // 1. Tu Participación (Solo cuentan si el admin ya las validó)
-      const totalActividades = actividadesValidadas.length;
-
-      // 2. ODS Diferentes (Extraídos solo de las actividades validadas)
-      const odsSet = new Set();
-      actividadesValidadas.forEach((act: any) => {
-        act.actividad_ods?.forEach((rel: any) => odsSet.add(rel.ods_id));
-      });
-      const totalOds = odsSet.size;
-
-      // 3. Impacto Social (Personas impactadas, confirmado por el admin)
+      const odsSet = new Set<number>();
       let totalBeneficiarios = 0;
-      actividadesValidadas.forEach((act: any) => {
-        totalBeneficiarios += (act.beneficiarios_directos || 0) + (act.beneficiarios_indirectos || 0);
+
+      actividadesUnicas.forEach((act: any) => {
+        (act.actividad_ods ?? []).forEach((rel: any) => {
+          if (rel.ods_id != null) odsSet.add(rel.ods_id);
+        });
+
+        totalBeneficiarios +=
+          Number(act.beneficiarios_directos ?? 0) +
+          Number(act.beneficiarios_indirectos ?? 0);
       });
 
-      // Actualizamos el dashboard
-      setStats({ 
-        actividades: totalActividades, 
-        beneficiarios: totalBeneficiarios, 
-        ods: totalOds 
+      setStats({
+        actividades: actividadesUnicas.length,
+        beneficiarios: totalBeneficiarios,
+        ods: odsSet.size
       });
 
       // 3. Actividades Dinámicas
@@ -202,10 +222,9 @@ export default function EmbajadorInicio() {
             actividad_ods(ods_id, ods(numero, nombre)), 
             actividad_acciones(tipo_accion_id, cantidad, tipos_accion(nombre))
           `)
-          .eq('municipio_id', miMunicipioId)
-          .gte('fecha_evento', hoyLocal)
+          .or(`municipio_id.eq.${miMunicipioId},creado_por_usuario_id.eq.${usuarioDatos.id}`)
           .is('fecha_eliminacion', null)
-          .in('estado', ['Programada', 'Publicado']) // Filtro directo en la BD
+          .or(`and(municipio_id.eq.${miMunicipioId},fecha_evento.gte.${hoyLocal},estado.in.(Programada,En curso,Realizada)),and(estado.eq.Borrador,creado_por_usuario_id.eq.${usuarioDatos.id})`)
           .order('fecha_evento', { ascending: true })
           .limit(50) // Salvaguarda para evitar saturar el frontend
           .returns<Actividad[]>();
@@ -236,8 +255,12 @@ export default function EmbajadorInicio() {
           });
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error cargando dashboard:", error);
+      notifyWithSound(
+        error?.message || 'No fue posible cargar tu panel.',
+        'error'
+      );
     } finally {
       setLoading(false);
     }
@@ -252,32 +275,83 @@ export default function EmbajadorInicio() {
 
   const handleSumarse = async () => {
     if (!usuarioDatos?.id || !eventoSeleccionado) return;
+
+    if (eventoSeleccionado.creado_por_usuario_id === usuarioDatos.id) {
+      notifyWithSound('No necesitas unirte a una actividad que tú organizaste.', 'info');
+      return;
+    }
+
     setIsJoining(true);
+
     try {
-      const { error } = await supabase.from('actividad_asistentes').insert({ actividad_id: eventoSeleccionado.id, usuario_id: usuarioDatos.id });
+      const { data: existente, error: consultaError } = await supabase
+        .from('actividad_asistentes')
+        .select('actividad_id')
+        .eq('actividad_id', eventoSeleccionado.id)
+        .eq('usuario_id', usuarioDatos.id)
+        .maybeSingle();
+
+      if (consultaError) throw consultaError;
+
+      if (existente) {
+        notifyWithSound('Ya formas parte de esta actividad.', 'info');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('actividad_asistentes')
+        .insert({
+          actividad_id: eventoSeleccionado.id,
+          usuario_id: usuarioDatos.id
+        });
+
       if (error) throw error;
-      await fetchDashboardData(); 
+
+      await fetchDashboardData();
       notifyWithSound('¡Te has unido a la actividad con éxito!', 'success');
-    } catch (error: any) { 
-      notifyWithSound("Error al unirte: " + error.message, 'error'); 
-    } finally { 
-      setIsJoining(false); 
+    } catch (error: any) {
+      notifyWithSound(
+        error?.message || 'No fue posible unirte a la actividad.',
+        'error'
+      );
+    } finally {
+      setIsJoining(false);
+    }
+  };
+
+  const handleDesunirse = async () => {
+    if (!usuarioDatos?.id || !eventoSeleccionado) return;
+    setIsJoining(true);
+
+    try {
+      const { error } = await supabase
+        .from('actividad_asistentes')
+        .delete()
+        .match({ actividad_id: eventoSeleccionado.id, usuario_id: usuarioDatos.id });
+
+      if (error) throw error;
+      await fetchDashboardData();
+      notifyWithSound('Te has desunido de la actividad.', 'success');
+    } catch (error: any) {
+      notifyWithSound(error?.message || 'No fue posible desunirte de la actividad.', 'error');
+    } finally {
+      setIsJoining(false);
     }
   };
 
   const irAEditar = (actividad: Actividad) => {
     setIsSidebarOpen(false);
-    navigate('/embajador/actividades', { state: { actToEdit: actividad } });
+    navigate('/embajador/calendario', { state: { actToEdit: actividad } });
   };
 
   const handleEliminar = async (id: number) => {
-    if (!window.confirm('¿Estás seguro de eliminar permanentemente esta actividad?')) return;
+    if (!window.confirm('¿Estás seguro de retirar esta actividad? Se ocultará del listado, pero se conservará el registro.')) return;
     try {
       const { error } = await supabase.from('actividades').update({ fecha_eliminacion: new Date().toISOString() }).eq('id', id);
       if (error) throw error;
       setIsSidebarOpen(false);
       fetchDashboardData();
-      notifyWithSound('Actividad eliminada permanentemente.', 'success');
+      notifyWithSound('Actividad retirada correctamente.', 'success');
     } catch (error) { 
       notifyWithSound('Error al eliminar la actividad.', 'error'); 
     }
@@ -551,7 +625,7 @@ export default function EmbajadorInicio() {
                     <span className="bg-gray-100 text-gray-600 py-0.5 px-2.5 rounded-full text-xs font-bold">{eventoSeleccionado.actividad_asistentes?.length || 0}</span>
                   </div>
 
-                  {eventoSeleccionado.actividad_asistentes?.length > 0 ? (
+                  {eventoSeleccionado.actividad_asistentes && eventoSeleccionado.actividad_asistentes.length > 0 ? (
                     <div className="space-y-2 mb-6 max-h-32 overflow-y-auto pr-2">
                       {eventoSeleccionado.actividad_asistentes.map((asistente, i) => (
                         <div key={i} className="flex items-center gap-3 p-2.5 rounded-xl bg-white border border-gray-100 shadow-sm text-sm font-medium">
@@ -567,7 +641,12 @@ export default function EmbajadorInicio() {
 
                   {eventoSeleccionado.creado_por_usuario_id !== usuarioDatos?.id && eventoSeleccionado.estado !== 'Cancelada' ? (
                     eventoSeleccionado.actividad_asistentes?.some(a => a.usuario_id === usuarioDatos?.id) ? (
-                      <div className="w-full flex items-center justify-center gap-2 bg-green-50 text-green-700 border border-green-200 px-6 py-3 rounded-xl font-bold"><CheckCircle2 size={20} /> ¡Ya estás unido!</div>
+                      <div className="flex flex-col gap-3 w-full">
+                        <div className="w-full flex items-center justify-center gap-2 bg-green-50 text-green-700 border border-green-200 px-6 py-3 rounded-xl font-bold"><CheckCircle2 size={20} /> ¡Ya estás unido!</div>
+                        <button onClick={handleDesunirse} disabled={isJoining} className="w-full flex items-center justify-center gap-2 bg-white text-red-500 border border-red-200 px-6 py-2.5 rounded-xl font-bold hover:bg-red-50 shadow-sm disabled:opacity-50">
+                          <X size={18} /> {isJoining ? 'Procesando...' : 'Desunirme de la actividad'}
+                        </button>
+                      </div>
                     ) : (
                       <button onClick={handleSumarse} disabled={isJoining} className="w-full flex items-center justify-center gap-2 bg-[#00689D] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#00527A] shadow-md disabled:opacity-50">
                         {isJoining ? 'Uniéndome...' : 'Unirme a la actividad'}
@@ -581,7 +660,7 @@ export default function EmbajadorInicio() {
             <div className="p-4 md:p-6 border-t border-gray-100 bg-gray-50 shrink-0">
               {eventoSeleccionado.creado_por_usuario_id === usuarioDatos?.id ? (
                 <div className="flex flex-wrap items-center justify-end gap-3">
-                  <button onClick={() => handleEliminar(eventoSeleccionado.id)} title="Eliminar de la base de datos" className="p-2.5 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-xl transition-colors">
+                  <button onClick={() => handleEliminar(eventoSeleccionado.id)} title="Retirar actividad" className="p-2.5 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-xl transition-colors">
                     <Trash2 size={20} />
                   </button>
                   {eventoSeleccionado.estado !== 'Cancelada' && (

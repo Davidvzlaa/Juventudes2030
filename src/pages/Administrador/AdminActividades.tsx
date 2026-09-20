@@ -94,12 +94,12 @@ export default function AdminActividades() {
       if (error) throw error;
 
       const { data: ods } = await supabase.from('actividad_ods').select('ods_id').eq('actividad_id', id);
-      const { data: acciones } = await supabase.from('actividad_acciones').select('tipo_accion_id').eq('actividad_id', id).single();
+      const { data: acciones } = await supabase.from('actividad_acciones').select('tipo_accion_id').eq('actividad_id', id).order('id', { ascending: true }).limit(1);
 
       setFormData({
         nombre: act.nombre || '',
         descripcion: act.descripcion || '',
-        tipo_accion_id: acciones ? acciones.tipo_accion_id : 0,
+        tipo_accion_id: acciones?.[0]?.tipo_accion_id ?? 0,
         fecha_evento: act.fecha_evento ? act.fecha_evento.split('T')[0] : '',
         hora_inicio: act.hora_inicio || '',
         hora_fin: act.hora_fin || '',

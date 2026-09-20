@@ -113,6 +113,7 @@
 //   </StrictMode>,
 // );
 import { createRoot } from 'react-dom/client';
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import './index.css';
 
@@ -136,21 +137,21 @@ import EmbajadorLayout from './pages/Layout/EmbajadorLayout';
 // ==========================================
 // MÓDULOS ADMINISTRADOR
 // ==========================================
-import AdminDashboard from './pages/Administrador/AdminDashboard';
-import AdminUsuariosDinamico from './pages/Administrador/AdminUsuariosDinamico';
-import AdminCatalogos from './pages/Administrador/AdminCatalogos';
-import AdminReportes from './pages/Administrador/AdminReportes';
-import AdminCalendario from './pages/Administrador/AdminCalendario';
+const AdminDashboard = lazy(() => import('./pages/Administrador/AdminDashboard'));
+const AdminUsuariosDinamico = lazy(() => import('./pages/Administrador/AdminUsuariosDinamico'));
+const AdminCatalogos = lazy(() => import('./pages/Administrador/AdminCatalogos'));
+const AdminReportes = lazy(() => import('./pages/Administrador/AdminReportes'));
+const AdminCalendario = lazy(() => import('./pages/Administrador/AdminCalendario'));
 // import AdminActividades from './pages/Administrador/AdminActividades';
 
 // ==========================================
 // MÓDULOS EMBAJADOR
 // ==========================================
-import EmbajaDashboard from './pages/Embajadores/EmbajaDashboard';
+const EmbajaDashboard = lazy(() => import('./pages/Embajadores/EmbajaDashboard'));
 // import EmbajaActividad from './pages/Embajadores/EmbajaActividad';
-import EmbajaReporte from './pages/Embajadores/EmbajaReporte';
-import EmbajaCalendario from './pages/Embajadores/EmbajaCalendario';
-import PerfilUsuario from './pages/PerfilUsuario';
+const EmbajaReporte = lazy(() => import('./pages/Embajadores/EmbajaReporte'));
+const EmbajaCalendario = lazy(() => import('./pages/Embajadores/EmbajaCalendario'));
+const PerfilUsuario = lazy(() => import('./pages/PerfilUsuario'));
 import ResultadosSeleccion from './pages/ResultadosSeleccion';
 // ==========================================
 // UI COMPONENTES
@@ -162,6 +163,7 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Toaster position="bottom-right" richColors duration={4000} />
+        <Suspense fallback={<div className="flex min-h-screen items-center justify-center text-gray-500">Cargando modulo...</div>}>
         <Routes>
           
           {/* -------------------------------------
@@ -219,6 +221,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
 
         </Routes>
+        </Suspense>
       </BrowserRouter>
     </AuthProvider>
   );

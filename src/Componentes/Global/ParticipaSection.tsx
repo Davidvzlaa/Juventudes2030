@@ -1,5 +1,6 @@
 import { useInView } from "react-intersection-observer";
 import { ArrowRight } from "lucide-react";
+import { Link } from "react-router-dom";
 
 export default function ParticipaSection() {
   const { ref, inView } = useInView({ triggerOnce: true, threshold: 0.3 });
@@ -30,10 +31,10 @@ export default function ParticipaSection() {
             </p>
           </div>
 
-          <a href="/acercade" className="group flex w-fit items-center gap-4 bg-white px-7 py-4 text-sm font-bold text-[#061A2D] transition hover:bg-gray-100">
+          <Link to="/acercade" className="group flex w-fit items-center gap-4 bg-white px-7 py-4 text-sm font-bold text-[#061A2D] transition hover:bg-gray-100">
             Quiero participar
             <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
-          </a>
+          </Link>
         </div>
       </div>
     </section>

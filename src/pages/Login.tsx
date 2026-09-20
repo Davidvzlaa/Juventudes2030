@@ -108,7 +108,14 @@ export default function Login() {
       .eq('id', authData.user.id)
       .single();
 
-    if (!userError && userData?.requiere_cambio_password) {
+    if (userError) {
+      await supabase.auth.signOut();
+      setError('Tu cuenta no tiene un perfil válido. Contacta al administrador.');
+      setIsLoading(false);
+      return;
+    }
+
+    if (userData?.requiere_cambio_password) {
       // Interceptamos la navegación y mostramos el formulario de cambio obligatorio
       setRequiereCambioPassword(true);
       setIsLoading(false);

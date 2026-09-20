@@ -88,13 +88,14 @@ export default function PerfilUsuario() {
 
       const { data: userData, error: userError } = await supabase
         .from("usuarios")
-        .select(`*, roles ( nombre )`)
+        .select(`*, usuario_roles ( roles ( nombre ) )`)
         .eq("id", user.id)
         .single();
 
       if (userError) throw userError;
 
-      const rolData = Array.isArray(userData.roles) ? userData.roles[0] : userData.roles;
+      const rolRelacion = Array.isArray(userData.usuario_roles) ? userData.usuario_roles[0] : userData.usuario_roles;
+      const rolData = Array.isArray(rolRelacion?.roles) ? rolRelacion.roles[0] : rolRelacion?.roles;
 
       let perfilData: UsuarioPerfil = { 
         ...userData,
@@ -172,12 +173,22 @@ export default function PerfilUsuario() {
     setGuardando(true);
 
     try {
+      const obtenerPathImagen = (url: string | null | undefined) => {
+        if (!url) return null;
+        const marker = '/storage/v1/object/public/imagenes/';
+        const markerIndex = url.indexOf(marker);
+        return markerIndex >= 0
+          ? decodeURIComponent(url.slice(markerIndex + marker.length))
+          : null;
+      };
+
       // 1. PROCESAR AVATAR DEL USUARIO (Bucket: imagenes)
       let finalAvatarUrl = perfil.avatar_url;
       if (archivoAvatar) {
-        if (perfil.avatar_url && perfil.avatar_url.includes('avatares/')) {
-          const oldFileName = perfil.avatar_url.split('/').pop();
-          if (oldFileName) await supabase.storage.from('imagenes').remove([`avatares/${oldFileName}`]).catch(() => {});
+        const oldAvatarPath = obtenerPathImagen(perfil.avatar_url);
+        if (oldAvatarPath?.startsWith(`avatares/avatar_${perfil.id}_`)) {
+          const { error: removeAvatarError } = await supabase.storage.from('imagenes').remove([oldAvatarPath]);
+          if (removeAvatarError) throw removeAvatarError;
         }
         
         const fileExt = archivoAvatar.name.split('.').pop();
@@ -206,14 +217,15 @@ export default function PerfilUsuario() {
         let finalLogoUrl = proyecto.logo;
         
         if (archivoLogo) {
-          if (proyecto.logo && proyecto.logo.includes('logos/')) {
-            const oldLogoName = proyecto.logo.split('/').pop();
-            if (oldLogoName) await supabase.storage.from('imagenes').remove([`logos/${oldLogoName}`]).catch(() => {});
+          const oldLogoPath = obtenerPathImagen(proyecto.logo);
+          if (oldLogoPath?.startsWith(`logos/${perfil.id}/`)) {
+            const { error: removeLogoError } = await supabase.storage.from('imagenes').remove([oldLogoPath]);
+            if (removeLogoError) throw removeLogoError;
           }
           
           const logoExt = archivoLogo.name.split('.').pop();
           const prefixId = proyecto.id === 0 ? `temp_${perfil.id}` : proyecto.id;
-          const logoName = `logos/logo_proyecto_${prefixId}_${Date.now()}.${logoExt}`;
+          const logoName = `logos/${perfil.id}/logo_proyecto_${prefixId}_${Date.now()}.${logoExt}`;
           
           const { error: uploadLogoError } = await supabase.storage.from('imagenes').upload(logoName, archivoLogo);
           if (uploadLogoError) throw uploadLogoError;

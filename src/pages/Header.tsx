@@ -65,11 +65,9 @@ export default function Header() {
   const handleLogout = async () => {
     try {
       closeMenu();
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
       navigate('/', { replace: true });
-      
-      setTimeout(async () => {
-        await supabase.auth.signOut();
-      }, 100);
       
     } catch (error) {
       console.error("Error al cerrar sesión:", error);
@@ -128,19 +126,19 @@ export default function Header() {
                 <Link to="/" className={navLinkClass}>
                   Inicio <span className={underlineClass}></span>
                 </Link>
-                <a href="/acercade" className={navLinkClass}>
+                <Link to="/acercade" className={navLinkClass}>
                   Acerca de <span className={underlineClass}></span>
-                </a>
-                <a href="/contacto" className={navLinkClass}>
+                </Link>
+                <Link to="/contacto" className={navLinkClass}>
                   Contacto <span className={underlineClass}></span>
-                </a>
-                <a href="/resultados" className={navLinkClass}>
+                </Link>
+                <Link to="/resultados" className={navLinkClass}>
                   Resultados <span className={underlineClass}></span>
-                </a>
+                </Link>
                 
                 {/* Botón de acceso institucional */}
                 <div className="pl-8 ml-2 border-l border-gray-200">
-                  <Link to="/Login" className="bg-[#04111f] text-white px-6 py-2.5 rounded text-[15px] font-bold uppercase tracking-[0.15em] hover:bg-[#00689D] hover:shadow-lg transition-all">
+                  <Link to="/login" className="bg-[#04111f] text-white px-6 py-2.5 rounded text-[15px] font-bold uppercase tracking-[0.15em] hover:bg-[#00689D] hover:shadow-lg transition-all">
                     Acceder
                   </Link>
                 </div>
@@ -213,12 +211,11 @@ export default function Header() {
               /* --- VISTA PÚBLICA MÓVIL --- */
               <div className="flex flex-col space-y-4">
                 <Link to="/" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Inicio</Link>
-                <a href="/acercade" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Acerca de</a>
-                <a href="/contacto" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Contacto</a>
-                <a href="/resultados" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Resultados</a>
-                <Link to="/perfil" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Perfil</Link>
+                <Link to="/acercade" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Acerca de</Link>
+                <Link to="/contacto" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Contacto</Link>
+                <Link to="/resultados" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Resultados</Link>
                 <div className="pt-6 mt-4 border-t border-gray-100">
-                  <Link to="/Login" onClick={closeMenu} className="bg-[#04111f] text-white w-full py-4 rounded text-xs font-bold uppercase tracking-widest text-center shadow-lg block">
+                  <Link to="/login" onClick={closeMenu} className="bg-[#04111f] text-white w-full py-4 rounded text-xs font-bold uppercase tracking-widest text-center shadow-lg block">
                     Acceder al Portal
                   </Link>
                 </div>

@@ -15,6 +15,7 @@ import {
 import { toast } from 'sonner';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
+import { guardarActividadCalendario } from '../../lib/guardarActividadCalendario';
 
 import {
   AlertDialog,
@@ -327,23 +328,22 @@ export default function AdminAgenda() {
         estado: estadoGuardar, actualizado_por_usuario_id: usuarioDatos?.id 
       };
 
-      let actividadId = editingId;
-
-      if (editingId) {
-        const { error } = await supabase.from('actividades').update(payload).eq('id', editingId);
-        if (error) throw error;
-        await supabase.from('actividad_ods').delete().eq('actividad_id', editingId);
-        await supabase.from('actividad_acciones').delete().eq('actividad_id', editingId);
-      } else {
-        const { data: nuevaAct, error } = await supabase.from('actividades').insert([{ ...payload, creado_por_usuario_id: usuarioDatos?.id }]).select('id').single();
-        if (error) throw error;
-        actividadId = nuevaAct.id;
-        // Opcional: El admin se auto-registra como asistente en sus eventos creados
-        await supabase.from('actividad_asistentes').insert([{ actividad_id: actividadId, usuario_id: usuarioDatos?.id }]);
-      }
-
-      await supabase.from('actividad_ods').insert(odsSeleccionados.map((ods_id, idx) => ({ actividad_id: actividadId, ods_id, es_principal: idx === 0 })));
-      await supabase.from('actividad_acciones').insert([{ actividad_id: actividadId, tipo_accion_id: formData.tipo_accion_id, cantidad: 1 }]);
+      await guardarActividadCalendario({
+        actividadId: editingId,
+        nombre: payload.nombre,
+        descripcion: payload.descripcion,
+        fechaEvento: payload.fecha_evento,
+        horaInicio: payload.hora_inicio,
+        horaFin: payload.hora_fin,
+        municipioId: payload.municipio_id,
+        lugar: payload.lugar,
+        calle: payload.calle,
+        colonia: payload.colonia,
+        direccion: payload.direccion,
+        estado: payload.estado,
+        tipoAccionId: formData.tipo_accion_id,
+        odsIds: odsSeleccionados,
+      });
 
       await fetchDatosBase();
       toast.success(estadoGuardar === 'Borrador' ? 'Guardado como borrador.' : 'Actividad publicada exitosamente.', { id: toastId });

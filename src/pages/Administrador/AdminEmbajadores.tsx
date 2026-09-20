@@ -64,8 +64,28 @@ export default function AdminEmbajadores() {
       .select(`usuario_id, activo, usuarios(nombre, apellido, correo), municipios(nombre), proyectos_sociales(nombre)`);
     
     // 2. Obtener usuarios que sean rol "Embajador" (Asumiendo que el ID del rol es 2)
-    const { data: dataUsr } = await supabase.from('usuarios').select('id, nombre, apellido, correo').eq('rol_id', 2).eq('activo', true);
-    
+const { data: dataUsr, error: errUsr } = await supabase
+  .from('usuarios')
+  .select(`
+    id,
+    nombre,
+    apellido,
+    correo,
+    usuario_roles!inner(
+      rol_id,
+      roles!inner(
+        id,
+        nombre
+      )
+    )
+  `)
+  .eq('activo', true)
+  .eq('usuario_roles.roles.nombre', 'Embajador');    
+
+    if (errUsr) {
+      console.error('Error al obtener usuarios:', errUsr);
+    }
+
     // 3. Obtener Catálogos
     const { data: dataMun } = await supabase.from('municipios').select('id, nombre').eq('activo', true);
     const { data: dataProy } = await supabase.from('proyectos_sociales').select('id, nombre').eq('activo', true);
@@ -119,16 +139,25 @@ export default function AdminEmbajadores() {
         }
       }
 
-      // Insertar o Actualizar el Perfil del Embajador (Upsert)
-      const { error } = await supabase
+      // Insertar o actualizar sin depender de una restricción UNIQUE no documentada.
+      const payloadEmbajador = {
+        usuario_id: usuarioId,
+        municipio_id: municipioId,
+        proyecto_social_id: proyectoFinalId,
+        activo: true,
+        fecha_ingreso: new Date().toISOString()
+      };
+      const { data: embajadorExistente, error: consultaEmbajadorError } = await supabase
         .from('embajadores')
-        .upsert({
-          usuario_id: usuarioId,
-          municipio_id: municipioId,
-          proyecto_social_id: proyectoFinalId,
-          activo: true,
-          fecha_ingreso: new Date().toISOString()
-        }, { onConflict: 'usuario_id' }); // Si el usuario ya era embajador, solo lo actualiza
+        .select('usuario_id')
+        .eq('usuario_id', usuarioId)
+        .maybeSingle();
+
+      if (consultaEmbajadorError) throw consultaEmbajadorError;
+
+      const { error } = embajadorExistente
+        ? await supabase.from('embajadores').update(payloadEmbajador).eq('usuario_id', usuarioId)
+        : await supabase.from('embajadores').insert(payloadEmbajador);
 
       if (error) throw error;
 

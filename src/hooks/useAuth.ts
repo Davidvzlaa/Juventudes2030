@@ -24,13 +24,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
+    let disposed = false;
+    let requestSequence = 0;
+
     const fetchUserAndRole = async (sessionOverride?: Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session']) => {
+      const requestId = ++requestSequence;
       try {
         const session = sessionOverride === undefined
           ? (await supabase.auth.getSession()).data.session
           : sessionOverride;
 
         if (!session) {
+          if (disposed || requestId !== requestSequence) return;
           setIsAuthenticated(false);
           setUserRole(null);
           setUsuarioDatos(null);
@@ -56,6 +61,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (error) throw error;
 
+        if (disposed || requestId !== requestSequence) return;
+
         // Separamos los datos personales de la relación de roles
         const { usuario_roles, ...datosPersonales } = usuarioData;
         setUsuarioDatos(datosPersonales as UsuarioDatos);
@@ -65,23 +72,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const rolObj = Array.isArray(rolesRelacion) ? rolesRelacion[0]?.roles : rolesRelacion?.roles;
         const nombreRol = Array.isArray(rolObj) ? rolObj[0]?.nombre : rolObj?.nombre;
         
-        // ==========================================
-        // LOGS DE DEPURACIÓN (Revisa tu consola web)
-        // ==========================================
-        console.log("=== DATOS DE LOGIN ===");
-        console.log("ID de Usuario:", session.user.id);
-        console.log("Datos Perfil:", datosPersonales);
-        console.log("Rol extraído de BD:", nombreRol || "NINGUNO (Revisa la tabla usuario_roles)");
-        
         setUserRole(nombreRol || null);
 
       } catch (error) {
+        if (disposed || requestId !== requestSequence) return;
         console.error('Error obteniendo usuario:', error);
         setIsAuthenticated(false);
         setUserRole(null);
         setUsuarioDatos(null);
       } finally {
-        setLoading(false);
+        if (!disposed && requestId === requestSequence) setLoading(false);
       }
     };
 
@@ -98,6 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => {
+      disposed = true;
       authListener.subscription.unsubscribe();
     };
   }, []);

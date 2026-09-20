@@ -15,8 +15,8 @@ export default function ModalCambioPassword() {
     e.preventDefault();
     setError(null);
 
-    if (nuevaPassword.length < 6) {
-      return setError('La contraseña debe tener al menos 6 caracteres.');
+    if (nuevaPassword.length < 8) {
+      return setError('La contraseña debe tener al menos 8 caracteres.');
     }
     if (nuevaPassword !== confirmarPassword) {
       return setError('Las contraseñas no coinciden.');

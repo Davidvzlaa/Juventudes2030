@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {  useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   format, addMonths, subMonths, addWeeks, subWeeks, addDays, subDays,
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay,
@@ -15,6 +15,7 @@ import {
 import { toast } from 'sonner';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
+import { guardarActividadCalendario } from '../../lib/guardarActividadCalendario';
 
 
 
@@ -63,6 +64,7 @@ const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | '
 export default function EmbajadorAgenda() {
   const { usuarioDatos } = useAuth();
   const location = useLocation(); 
+  const navigate = useNavigate();
   
   // ==========================================
   // ESTADOS DE VISTA Y DATOS
@@ -172,7 +174,7 @@ export default function EmbajadorAgenda() {
             actividad_ods(ods_id, es_principal, ods(numero, nombre)), 
             actividad_acciones(tipo_accion_id, cantidad, tipos_accion(nombre))
           `)
-          .eq('municipio_id', embajador.municipio_id)
+          .or(`municipio_id.eq.${embajador.municipio_id},creado_por_usuario_id.eq.${usuarioDatos.id}`)
           .is('fecha_eliminacion', null);
           
         if (error) throw error;
@@ -180,6 +182,15 @@ export default function EmbajadorAgenda() {
         // Filtramos borradores de otros usuarios
         const actividadesPermitidas = (acts as any[]).filter(a => a.estado !== 'Borrador' || a.creado_por_usuario_id === usuarioDatos.id);
         setActividades(actividadesPermitidas || []);
+
+        const actividadParaEditar = (location.state as { actToEdit?: Actividad } | null)?.actToEdit;
+        if (actividadParaEditar) {
+          const actividadCargada = actividadesPermitidas.find((actividad) => actividad.id === actividadParaEditar.id);
+          if (actividadCargada) {
+            prepararEdicion(actividadCargada);
+            navigate('/embajador/calendario', { replace: true, state: null });
+          }
+        }
 
         // Actualizar selección si está abierto el Drawer de detalles
         if (drawerState.isOpen && drawerState.mode === 'detalles' && eventoSeleccionado) {
@@ -321,22 +332,22 @@ export default function EmbajadorAgenda() {
         estado: estadoGuardar, actualizado_por_usuario_id: usuarioDatos?.id 
       };
 
-      let actividadId = editingId;
-
-      if (editingId) {
-        const { error } = await supabase.from('actividades').update(payload).eq('id', editingId);
-        if (error) throw error;
-        await supabase.from('actividad_ods').delete().eq('actividad_id', editingId);
-        await supabase.from('actividad_acciones').delete().eq('actividad_id', editingId);
-      } else {
-        const { data: nuevaAct, error } = await supabase.from('actividades').insert([{ ...payload, creado_por_usuario_id: usuarioDatos?.id }]).select('id').single();
-        if (error) throw error;
-        actividadId = nuevaAct.id;
-        await supabase.from('actividad_asistentes').insert([{ actividad_id: actividadId, usuario_id: usuarioDatos?.id }]);
-      }
-
-      await supabase.from('actividad_ods').insert(odsSeleccionados.map((ods_id, idx) => ({ actividad_id: actividadId, ods_id, es_principal: idx === 0 })));
-      await supabase.from('actividad_acciones').insert([{ actividad_id: actividadId, tipo_accion_id: formData.tipo_accion_id, cantidad: 1 }]);
+      await guardarActividadCalendario({
+        actividadId: editingId,
+        nombre: payload.nombre,
+        descripcion: payload.descripcion,
+        fechaEvento: payload.fecha_evento,
+        horaInicio: payload.hora_inicio,
+        horaFin: payload.hora_fin,
+        municipioId: payload.municipio_id,
+        lugar: payload.lugar,
+        calle: payload.calle,
+        colonia: payload.colonia,
+        direccion: payload.direccion,
+        estado: payload.estado,
+        tipoAccionId: formData.tipo_accion_id,
+        odsIds: odsSeleccionados,
+      });
 
       await fetchDatosBase();
       toast.success(estadoGuardar === 'Borrador' ? 'Guardado como borrador.' : 'Actividad publicada exitosamente.', { id: toastId });
@@ -356,6 +367,19 @@ export default function EmbajadorAgenda() {
     if (!usuarioDatos?.id || !eventoSeleccionado) return;
     setIsJoining(true);
     try {
+      const { data: asistenciaExistente, error: consultaError } = await supabase
+        .from('actividad_asistentes')
+        .select('actividad_id')
+        .eq('actividad_id', eventoSeleccionado.id)
+        .eq('usuario_id', usuarioDatos.id)
+        .maybeSingle();
+
+      if (consultaError) throw consultaError;
+      if (asistenciaExistente) {
+        notifyWithSound('Ya estás unido a esta actividad.', 'warning');
+        return;
+      }
+
       const { error } = await supabase.from('actividad_asistentes').insert({ actividad_id: eventoSeleccionado.id, usuario_id: usuarioDatos.id });
       if (error) throw error;
       await fetchDatosBase(); 

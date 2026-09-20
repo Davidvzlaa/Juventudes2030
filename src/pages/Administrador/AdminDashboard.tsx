@@ -110,20 +110,20 @@ export default function AdminDashboard() {
       setLoading(true);
       try {
         // MEJORA: Consultas seguras que no inflan los datos.
-        // Solo traemos actividades "Validadas" y usuarios "Activos".
+        // Solo traemos actividades operativas y usuarios activos.
         const [resActividades, resUsuarios, resActOds, resMun, resOds] = await Promise.all([
           supabase.from('actividades')
             .select('id, beneficiarios_directos, beneficiarios_indirectos, municipios(nombre)')
-            .eq('estado', 'Validada')
+            .in('estado', ['Programada', 'En curso', 'Realizada'])
             .is('fecha_eliminacion', null),
           
           supabase.from('usuarios')
-            .select('id, nombre, apellido, roles(nombre), embajadores(municipios(nombre)), actividades!creado_por_usuario_id(id)')
+            .select('id, nombre, apellido, usuario_roles(roles(nombre)), embajadores(municipios(nombre)), actividades!creado_por_usuario_id(id)')
             .eq('activo', true),
 
           supabase.from('actividad_ods')
             .select('ods(numero, nombre), actividades!inner(estado, fecha_eliminacion)')
-            .eq('actividades.estado', 'Validada')
+            .in('actividades.estado', ['Programada', 'En curso', 'Realizada'])
             .is('actividades.fecha_eliminacion', null),
 
           supabase.from('municipios').select('nombre').eq('activo', true),
@@ -133,9 +133,20 @@ export default function AdminDashboard() {
         if (resActividades.error) throw resActividades.error;
         if (resUsuarios.error) throw resUsuarios.error;
 
+        const usuariosNormalizados = (resUsuarios.data ?? []).map((usuario) => {
+          const usuarioRoles = Array.isArray(usuario.usuario_roles)
+            ? usuario.usuario_roles[0]
+            : usuario.usuario_roles;
+          const roles = Array.isArray(usuarioRoles?.roles)
+            ? usuarioRoles.roles[0]
+            : usuarioRoles?.roles;
+
+          return { ...usuario, roles };
+        });
+
         setRawData({
           actividades: resActividades.data as unknown as Actividad[] || [],
-          usuarios: resUsuarios.data as unknown as Usuario[] || [],
+          usuarios: usuariosNormalizados as unknown as Usuario[],
           actOds: resActOds.data as unknown as ActividadOds[] || [],
           catMunicipios: resMun.data as BaseNamedElement[] || [],
           catOds: resOds.data as OdsData[] || []
