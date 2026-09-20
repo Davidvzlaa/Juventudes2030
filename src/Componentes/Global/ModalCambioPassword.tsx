@@ -32,15 +32,10 @@ export default function ModalCambioPassword() {
 
       if (errAuth) throw errAuth;
 
-      // 2. Actualizamos la bandera en tu tabla pública 'usuarios'
-      const { error: errTabla } = await supabase
-        .from('usuarios')
-        .update({ requiere_cambio_password: false })
-        .eq('id', usuarioDatos?.id);
+      // 2. Actualizamos la bandera de forma segura mediante el RPC
+const { error: errTabla } = await supabase.rpc('marcar_password_cambiada');
 
-      if (errTabla) throw errTabla;
-
-      alert("¡Contraseña actualizada con éxito!");
+if (errTabla) throw errTabla;
       
     } catch (err: any) {
       setError(err.message || 'Hubo un problema al actualizar la contraseña.');
