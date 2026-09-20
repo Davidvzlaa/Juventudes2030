@@ -21,7 +21,7 @@ interface OdsData {
   numero: number;
   nombre: string;
 }
-
+ 
 interface Actividad {
   id: number;
   beneficiarios_directos: number | null;
