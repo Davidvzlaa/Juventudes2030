@@ -1224,7 +1224,7 @@
 // }
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Inbox, FileText, Edit2, X, Save, Settings2, Plus, Calendar, Loader2, Filter, MapPin, Globe, AlertTriangle, RefreshCw, Lock, CheckCircle2, CornerUpLeft, Building2
+  Inbox, FileText, Edit2, X, Save, Settings2, Plus, Calendar, Loader2, Filter, MapPin, Globe, AlertTriangle, RefreshCw, Lock, CheckCircle2, CornerUpLeft, 
 } from 'lucide-react';
 import { BlobProvider, PDFDownloadLink, Document } from '@react-pdf/renderer';
 import { toast } from 'sonner';

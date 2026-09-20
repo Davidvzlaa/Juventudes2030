@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Calendar, FileText, Send, AlertCircle, Clock, CheckCircle2, 
-  Plus, X, Save, UploadCloud, Edit2, Loader2, Info, Globe, Users, 
-  FileDown, Building2, AlertTriangle, RefreshCw, Filter, MapPin
+  Plus, X, Save, UploadCloud, Edit2, Loader2, Info, Globe, Users, Building2, AlertTriangle,
 } from 'lucide-react';
 import { BlobProvider, PDFDownloadLink, Document } from '@react-pdf/renderer';
 import { toast } from 'sonner';
