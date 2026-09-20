@@ -4085,10 +4085,6 @@ const obtenerNombreArchivoStorage = (url?: string | null) => {
   }
 };
 
-const esUrlValida = (url: string) => {
-  try { const parsed = new URL(url); return parsed.protocol === "http:" || parsed.protocol === "https:"; } 
-  catch { return false; }
-};
 
 // ==========================================
 // COMPONENTE PARA DRAG & DROP
@@ -4192,7 +4188,7 @@ export default function CatalogoPrograma() {
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [dialogoConfirmacion, setDialogoConfirmacion] = useState<{ isOpen: boolean; idRed: number | null; }>({ isOpen: false, idRed: null });
   const [dialogoConfBanner, setDialogoConfBanner] = useState<{ isOpen: boolean; idBanner: string | null; }>({ isOpen: false, idBanner: null });
-  const [isProcessingAction, setIsProcessingAction] = useState(false);
+  const [, setIsProcessingAction] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),

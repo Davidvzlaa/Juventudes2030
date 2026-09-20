@@ -752,7 +752,6 @@ const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | '
 
 export default function EmbajadorInicio() {
   const { usuarioDatos } = useAuth();
-  const navigate = useNavigate();
   const location = useLocation();
   
   const [loading, setLoading] = useState(true);
@@ -1063,7 +1062,7 @@ export default function EmbajadorInicio() {
     );
   }
 
-  function irAEditar(eventoSeleccionado: Actividad): void {
+  function irAEditar(_eventoSeleccionado: Actividad): void {
     throw new Error('Function not implemented.');
   }
 
