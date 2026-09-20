@@ -174,7 +174,7 @@ export default function EmbajadorAgenda() {
             actividad_ods(ods_id, es_principal, ods(numero, nombre)), 
             actividad_acciones(tipo_accion_id, cantidad, tipos_accion(nombre))
           `)
-          .or(`municipio_id.eq.${embajador.municipio_id},creado_por_usuario_id.eq.${usuarioDatos.id}`)
+.or(`municipio_id.eq.${embajador.municipio_id},creado_por_usuario_id.eq.${usuarioDatos.id},municipio_id.is.null`)
           .is('fecha_eliminacion', null);
           
         if (error) throw error;

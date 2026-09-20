@@ -222,10 +222,10 @@ export default function EmbajadorInicio() {
             actividad_ods(ods_id, ods(numero, nombre)), 
             actividad_acciones(tipo_accion_id, cantidad, tipos_accion(nombre))
           `)
-          .or(`municipio_id.eq.${miMunicipioId},creado_por_usuario_id.eq.${usuarioDatos.id}`)
-          .is('fecha_eliminacion', null)
-          .or(`and(municipio_id.eq.${miMunicipioId},fecha_evento.gte.${hoyLocal},estado.in.(Programada,En curso,Realizada)),and(estado.eq.Borrador,creado_por_usuario_id.eq.${usuarioDatos.id})`)
-          .order('fecha_evento', { ascending: true })
+          .or(`municipio_id.eq.${miMunicipioId},creado_por_usuario_id.eq.${usuarioDatos.id},municipio_id.is.null`)
+.is('fecha_eliminacion', null)
+.or(`and(municipio_id.eq.${miMunicipioId},fecha_evento.gte.${hoyLocal},estado.in.(Programada,En curso,Realizada)),and(municipio_id.is.null,fecha_evento.gte.${hoyLocal},estado.in.(Programada,En curso,Realizada)),and(estado.eq.Borrador,creado_por_usuario_id.eq.${usuarioDatos.id})`)
+.order('fecha_evento', { ascending: true })
           .limit(50) // Salvaguarda para evitar saturar el frontend
           .returns<Actividad[]>();
 
