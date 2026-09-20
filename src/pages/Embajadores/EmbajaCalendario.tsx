@@ -17,13 +17,13 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { guardarActividadCalendario } from '../../lib/guardarActividadCalendario';
 
-
-
 // ==========================================
 // INTERFACES
 // ==========================================
 interface Ods { id: number; nombre: string; numero: number; }
 interface Catalogo { id: number; nombre: string; }
+interface Institucion { id: number; nombre: string; }
+
 interface Actividad {
   id: number;
   nombre: string;
@@ -38,8 +38,11 @@ interface Actividad {
   colonia: string;
   estado: string;
   creado_por_usuario_id: string;
+  es_externa?: boolean;
+  institucion_id?: number | null;
   municipios: { nombre: string };
   creador: { nombre: string; apellido: string };
+  instituciones?: { nombre: string } | null;
   actividad_asistentes: { usuario_id: string; usuarios: { nombre: string; apellido: string } }[];
   actividad_ods: { ods_id: number; es_principal?: boolean; ods: { numero: number; nombre: string } }[];
   actividad_acciones: { tipo_accion_id: number; cantidad: number; tipos_accion: { nombre: string } }[];
@@ -79,6 +82,7 @@ export default function EmbajadorAgenda() {
   const [municipiosDB, setMunicipiosDB] = useState<Catalogo[]>([]);
   const [tiposAccionDB, setTiposAccionDB] = useState<Catalogo[]>([]);
   const [odsDB, setOdsDB] = useState<Ods[]>([]);
+  const [institucionesDB, setInstitucionesDB] = useState<Institucion[]>([]);
 
   // Filtros Vista Lista
   const [filterEstado, setFilterEstado] = useState('Todos');
@@ -99,7 +103,8 @@ export default function EmbajadorAgenda() {
   const [isJoining, setIsJoining] = useState(false);
   const [formData, setFormData] = useState({
     nombre: '', descripcion: '', tipo_accion_id: 0, fecha_evento: '', hora_inicio: '', hora_fin: '',
-    municipio_id: 0, lugar: '', calle: '', colonia: '', direccion: '', estado: 'Programada'
+    municipio_id: 0, lugar: '', calle: '', colonia: '', direccion: '', estado: 'Programada',
+    es_externa: false, institucion_id: 0
   });
   const [odsSeleccionados, setOdsSeleccionados] = useState<number[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -152,29 +157,33 @@ export default function EmbajadorAgenda() {
       
       // 2. Obtener Catálogos (Solo una vez)
       if (municipiosDB.length === 0) {
-        const [resMun, resOds, resTipos] = await Promise.all([
+        const [resMun, resOds, resTipos, resInst] = await Promise.all([
           supabase.from('municipios').select('id, nombre').eq('activo', true).order('nombre'),
           supabase.from('ods').select('id, nombre, numero').eq('activo', true).order('numero', { ascending: true }),
-          supabase.from('tipos_accion').select('id, nombre').eq('activo', true).order('nombre')
+          supabase.from('tipos_accion').select('id, nombre').eq('activo', true).order('nombre'),
+          supabase.from('instituciones').select('id, nombre').eq('activo', true).order('nombre')
         ]);
         if (resMun.data) setMunicipiosDB(resMun.data);
         if (resOds.data) setOdsDB(resOds.data);
         if (resTipos.data) setTiposAccionDB(resTipos.data);
+        if (resInst.data) setInstitucionesDB(resInst.data);
       }
 
-      // 3. Obtener Actividades del Municipio (Abarca todo lo que necesita el calendario y la lista)
+      // 3. Obtener Actividades del Municipio
       if (embajador?.municipio_id) {
         const { data: acts, error } = await supabase
           .from('actividades')
           .select(`
             id, nombre, descripcion, fecha_evento, hora_inicio, hora_fin, lugar, direccion, calle, colonia, municipio_id, estado, creado_por_usuario_id,
+            es_externa, institucion_id,
             municipios(nombre), 
             creador:usuarios!actividades_creado_por_usuario_id_fkey(nombre, apellido),
+            instituciones(nombre),
             actividad_asistentes(usuario_id, usuarios(nombre, apellido)), 
             actividad_ods(ods_id, es_principal, ods(numero, nombre)), 
             actividad_acciones(tipo_accion_id, cantidad, tipos_accion(nombre))
           `)
-.or(`municipio_id.eq.${embajador.municipio_id},creado_por_usuario_id.eq.${usuarioDatos.id},municipio_id.is.null`)
+          .or(`municipio_id.eq.${embajador.municipio_id},creado_por_usuario_id.eq.${usuarioDatos.id},municipio_id.is.null`)
           .is('fecha_eliminacion', null);
           
         if (error) throw error;
@@ -275,7 +284,8 @@ export default function EmbajadorAgenda() {
     setEditingId(null);
     setFormData({
       nombre: '', descripcion: '', tipo_accion_id: 0, fecha_evento: '', hora_inicio: '', hora_fin: '',
-      municipio_id: 0, lugar: '', calle: '', colonia: '', direccion: '', estado: 'Programada'
+      municipio_id: 0, lugar: '', calle: '', colonia: '', direccion: '', estado: 'Programada',
+      es_externa: false, institucion_id: 0
     });
     setOdsSeleccionados([]);
     setDrawerState({ isOpen: true, mode: 'formulario' });
@@ -290,7 +300,9 @@ export default function EmbajadorAgenda() {
       hora_fin: act.hora_fin ? act.hora_fin.substring(0, 5) : '',
       municipio_id: act.municipio_id || 0, lugar: act.lugar || '',
       calle: act.calle || '', colonia: act.colonia || '', direccion: act.direccion || '',
-      estado: act.estado || 'Programada'
+      estado: act.estado || 'Programada',
+      es_externa: act.es_externa || false,
+      institucion_id: act.institucion_id || 0
     });
     setOdsSeleccionados(act.actividad_ods ? act.actividad_ods.map((o: any) => o.ods_id) : []);
     setEditingId(act.id);
@@ -319,6 +331,11 @@ export default function EmbajadorAgenda() {
     if (formData.tipo_accion_id === 0) return toast.warning("Selecciona el Tipo de Acción Principal.");
     if (odsSeleccionados.length === 0) return toast.warning("Debes alinear la actividad con al menos un ODS.");
     if (!formData.calle.trim() || !formData.colonia.trim()) return toast.warning("La calle y colonia son obligatorias.");
+    
+    // Validación de Institución Externa
+    if (formData.es_externa && formData.institucion_id === 0) {
+      return toast.warning("Selecciona la Institución organizadora.");
+    }
 
     setIsSaving(true);
     const toastId = toast.loading(editingId ? 'Actualizando...' : 'Guardando...');
@@ -329,7 +346,9 @@ export default function EmbajadorAgenda() {
         fecha_evento: formData.fecha_evento, hora_inicio: formData.hora_inicio, hora_fin: formData.hora_fin,
         municipio_id: formData.municipio_id, lugar: formData.lugar.trim(),
         calle: formData.calle.trim(), colonia: formData.colonia.trim(), direccion: formData.direccion.trim(),
-        estado: estadoGuardar, actualizado_por_usuario_id: usuarioDatos?.id 
+        estado: estadoGuardar, actualizado_por_usuario_id: usuarioDatos?.id,
+        es_externa: formData.es_externa,
+        institucion_id: formData.es_externa ? formData.institucion_id : null
       };
 
       await guardarActividadCalendario({
@@ -347,6 +366,8 @@ export default function EmbajadorAgenda() {
         estado: payload.estado,
         tipoAccionId: formData.tipo_accion_id,
         odsIds: odsSeleccionados,
+        es_externa: payload.es_externa,
+        institucion_id: payload.institucion_id
       });
 
       await fetchDatosBase();
@@ -788,8 +809,11 @@ export default function EmbajadorAgenda() {
                 <div>
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Organizador</p>
                   <p className="font-bold text-gray-900 text-lg">
-                    {eventoSeleccionado.creador?.nombre} {eventoSeleccionado.creador?.apellido}
-                    {eventoSeleccionado.creado_por_usuario_id === usuarioDatos?.id && <span className={`ml-2 font-black text-sm ${eventoSeleccionado.estado === 'Cancelada' ? 'text-red-600' : 'text-[#00689D]'}`}>(TÚ)</span>}
+                    {eventoSeleccionado.es_externa && eventoSeleccionado.instituciones?.nombre 
+                      ? <span className="text-purple-600">{eventoSeleccionado.instituciones.nombre}</span> 
+                      : `${eventoSeleccionado.creador?.nombre} ${eventoSeleccionado.creador?.apellido}`
+                    }
+                    {eventoSeleccionado.creado_por_usuario_id === usuarioDatos?.id && !eventoSeleccionado.es_externa && <span className={`ml-2 font-black text-sm ${eventoSeleccionado.estado === 'Cancelada' ? 'text-red-600' : 'text-[#00689D]'}`}>(TÚ)</span>}
                   </p>
                 </div>
               </div>
@@ -860,7 +884,7 @@ export default function EmbajadorAgenda() {
               )}
             </div>
 
-            <div className="p-4 md:p-6 border-t border-gray-100 bg-gray-50 shrink-0">
+            <div className="p-4 md:p-6 border-t border-gray-100 bg-gray-50 flex flex-wrap justify-end gap-3 shrink-0">
               {eventoSeleccionado.creado_por_usuario_id === usuarioDatos?.id ? (
                 <div className="flex flex-wrap items-center justify-end gap-3">
                   <button onClick={() => setDialogoConfirmacion({ isOpen: true, tipo: 'eliminar', idActividad: eventoSeleccionado.id })} title="Eliminar permanentemente" className="p-2.5 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-xl transition-colors"><Trash2 size={20} /></button>
@@ -896,6 +920,40 @@ export default function EmbajadorAgenda() {
                 
                 <div className="space-y-4">
                   <h3 className="text-lg font-bold text-[#00689D] flex items-center gap-2 border-b pb-2"><Target size={18}/> Datos Generales</h3>
+                  
+                  {/* SECCIÓN INSTITUCIÓN EXTERNA */}
+                  <div className="bg-purple-50/50 p-4 border border-purple-100 rounded-xl mb-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        name="es_externa" 
+                        checked={formData.es_externa} 
+                        onChange={(e) => setFormData({...formData, es_externa: e.target.checked})} 
+                        className="w-4 h-4 text-purple-600 rounded border-gray-300 focus:ring-purple-600"
+                      />
+                      <span className="text-sm font-bold text-gray-800">
+                        ¿Fue una actividad organizada por un tercero (Escuela, Institución, Empresa)?
+                      </span>
+                    </label>
+                    {formData.es_externa && (
+                      <div className="mt-3 ml-6">
+                        <label className="block text-xs font-bold text-gray-600 mb-1">Nombre de la Institución u Organizador <span className="text-red-500">*</span></label>
+                        <select 
+                          required
+                          name="institucion_id" 
+                          value={formData.institucion_id || ''} 
+                          onChange={(e) => setFormData({...formData, institucion_id: Number(e.target.value)})} 
+                          className="w-full border border-gray-300 rounded-lg p-2 text-sm bg-white outline-none focus:border-purple-500"
+                        >
+                          <option value="">-- Selecciona una Institución --</option>
+                          {institucionesDB.map(inst => (
+                            <option key={inst.id} value={inst.id}>{inst.nombre}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="md:col-span-2">
                       <label className="block text-xs font-bold text-gray-700 mb-1">Nombre de la Actividad <span className="text-red-500">*</span></label>

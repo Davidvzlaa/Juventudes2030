@@ -15,6 +15,9 @@ export interface GuardarActividadCalendarioInput {
   estado: string;
   tipoAccionId: number;
   odsIds: number[];
+  // 👇 Nuevos campos añadidos
+  es_externa?: boolean;
+  institucion_id?: number | null;
 }
 
 export async function guardarActividadCalendario(input: GuardarActividadCalendarioInput) {
@@ -33,6 +36,9 @@ export async function guardarActividadCalendario(input: GuardarActividadCalendar
     p_estado: input.estado,
     p_tipo_accion_id: input.tipoAccionId,
     p_ods_ids: input.odsIds,
+    // 👇 Pasamos los nuevos campos a la base de datos
+    p_es_externa: input.es_externa || false,
+    p_institucion_id: input.institucion_id || null,
   });
 
   if (error) throw error;
