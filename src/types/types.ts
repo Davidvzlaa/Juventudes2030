@@ -15,6 +15,7 @@ export interface BeneficiarioData {
 }
 
 export interface Actividad {
+  es_externa: import("react").JSX.Element;
   sectores(sectores: any): unknown;
   id: number;
   nombre: string;
