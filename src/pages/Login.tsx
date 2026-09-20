@@ -148,15 +148,10 @@ export default function Login() {
       if (updateError) throw updateError;
 
       // 2. Quitamos la bandera en la tabla pública de usuarios
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { error: dbError } = await supabase
-          .from('usuarios')
-          .update({ requiere_cambio_password: false })
-          .eq('id', user.id);
+      // 2. Quitamos la bandera en la tabla pública de usuarios usando el RPC
+const { error: dbError } = await supabase.rpc('marcar_password_cambiada');
 
-        if (dbError) throw dbError;
-      }
+if (dbError) throw dbError;
 
       toast.success('¡Contraseña actualizada con éxito! Bienvenido.');
       setRequiereCambioPassword(false);
