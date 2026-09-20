@@ -45,6 +45,7 @@ export default function ExplorarActividades() {
 
   const [actividades, setActividades] = useState<any[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // 1. CARGAR CATÁLOGO DE MUNICIPIOS
@@ -59,6 +60,7 @@ export default function ExplorarActividades() {
   // 2. MOTOR DE BÚSQUEDA Y FILTRADO
   const buscarActividades = async () => {
     setCargando(true);
+    setErrorCarga(null);
     try {
       const hoy = new Date();
       let fechaInicio = hoy.toISOString(); 
@@ -117,6 +119,8 @@ if (municipiosSel.length > 0) {
       }
     } catch (error) {
       console.error("Error al cargar actividades:", error);
+      setActividades([]);
+      setErrorCarga('No se pudieron cargar las actividades públicas. Verifica las policies de lectura en Supabase.');
     } finally {
       setCargando(false);
     }
@@ -170,6 +174,14 @@ if (municipiosSel.length > 0) {
             <Button variant="ghost" size="sm" onClick={limpiarFiltros} className="h-8 text-red-500 hover:bg-red-50 hover:text-red-700">
               <X className="mr-2 h-4 w-4" /> Limpiar filtros
             </Button>
+          )}
+          {errorCarga && (
+            <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              <span>{errorCarga}</span>
+              <button type="button" onClick={buscarActividades} className="rounded-lg border border-red-300 bg-white px-3 py-1.5 font-bold hover:bg-red-100">
+                Reintentar
+              </button>
+            </div>
           )}
         </div>
 
