@@ -15,6 +15,8 @@ export interface BeneficiarioData {
 }
 
 export interface Actividad {
+  sectores(sectores: any): unknown;
+  sectores: any;
   id: number;
   nombre: string;
   fecha_evento: string;

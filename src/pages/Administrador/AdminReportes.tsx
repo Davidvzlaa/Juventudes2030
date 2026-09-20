@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Inbox, FileText, Edit2, X, Save, Settings2, Plus, Calendar, Loader2, Filter, MapPin, Globe, AlertTriangle, RefreshCw, Lock
+  Inbox, FileText, Edit2, X, Save, Settings2, Plus, Calendar, Loader2, Filter, MapPin, Globe, AlertTriangle, RefreshCw, Lock, CheckCircle2, CornerUpLeft
 } from 'lucide-react';
 import { BlobProvider, PDFDownloadLink, Document } from '@react-pdf/renderer';
 import { toast } from 'sonner';
@@ -29,11 +29,9 @@ const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | '
     default: toast.info(message, options);
   }
 };
+
 // ==========================================
 // VISOR PDF ESTABLE
-// Genera el PDF en segundo plano y conserva
-// el último PDF válido mientras el siguiente
-// se está renderizando.
 // ==========================================
 type PDFBlobContentProps = {
   url: string | null;
@@ -43,17 +41,9 @@ type PDFBlobContentProps = {
   onNewUrl: (url: string) => void;
 };
 
-const PDFBlobContent = React.memo(({
-  url,
-  loading,
-  error,
-  stableUrl,
-  onNewUrl,
-}: PDFBlobContentProps) => {
+const PDFBlobContent = React.memo(({ url, loading, error, stableUrl, onNewUrl }: PDFBlobContentProps) => {
   useEffect(() => {
-    if (url && url !== stableUrl) {
-      onNewUrl(url);
-    }
+    if (url && url !== stableUrl) onNewUrl(url);
   }, [url, stableUrl, onNewUrl]);
 
   if (error) {
@@ -62,9 +52,7 @@ const PDFBlobContent = React.memo(({
         <div>
           <AlertTriangle className="mx-auto mb-3 text-red-500" size={32} />
           <p className="font-bold text-gray-700">No se pudo generar el PDF</p>
-          <p className="text-xs text-gray-500 mt-1">
-            Intenta refrescar el expediente.
-          </p>
+          <p className="text-xs text-gray-500 mt-1">Intenta refrescar el expediente.</p>
         </div>
       </div>
     );
@@ -73,36 +61,23 @@ const PDFBlobContent = React.memo(({
   return (
     <>
       {stableUrl ? (
-        <iframe
-          title="Vista previa del reporte PDF"
-          src={stableUrl}
-          className="w-full h-full border-0 bg-white"
-        />
+        <iframe title="Vista previa del reporte PDF" src={stableUrl} className="w-full h-full border-0 bg-white"/>
       ) : (
         <div className="absolute inset-0 flex items-center justify-center bg-white">
           <div className="text-center">
-            <Loader2
-              size={38}
-              className="animate-spin text-[#00689D] mx-auto mb-3"
-            />
-            <p className="font-bold text-gray-700">
-              Generando vista previa...
-            </p>
-            <p className="text-xs text-gray-400 mt-1">
-              El PDF aparecerá automáticamente.
-            </p>
+            <Loader2 size={38} className="animate-spin text-[#00689D] mx-auto mb-3" />
+            <p className="font-bold text-gray-700">Generando vista previa...</p>
+            <p className="text-xs text-gray-400 mt-1">El PDF aparecerá automáticamente.</p>
           </div>
         </div>
       )}
-
       {loading && stableUrl && (
         <div className="absolute inset-x-0 top-0 z-20 pointer-events-none">
           <div className="h-1 bg-gray-200 overflow-hidden">
             <div className="h-full w-1/3 bg-[#00689D] animate-[pulse_1.2s_ease-in-out_infinite]" />
           </div>
           <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-sm border border-gray-200 shadow-lg rounded-full px-3 py-1.5 flex items-center gap-2 text-xs font-semibold text-gray-600">
-            <Loader2 size={13} className="animate-spin text-[#00689D]" />
-            Actualizando PDF...
+            <Loader2 size={13} className="animate-spin text-[#00689D]" /> Actualizando PDF...
           </div>
         </div>
       )}
@@ -112,19 +87,13 @@ const PDFBlobContent = React.memo(({
 
 type PDFDocumentElement = React.ReactElement<React.ComponentProps<typeof Document>>;
 
-const VisorPDFAislado = React.memo(
-  ({ document }: { document: PDFDocumentElement | null }) => {
+const VisorPDFAislado = React.memo(({ document }: { document: PDFDocumentElement | null }) => {
     const [stableUrl, setStableUrl] = useState<string | null>(null);
-
     const currentUrlRef = React.useRef<string | null>(null);
 
     const handleNewUrl = React.useCallback((url: string) => {
       const oldUrl = currentUrlRef.current;
-
-      if (oldUrl && oldUrl !== url) {
-        URL.revokeObjectURL(oldUrl);
-      }
-
+      if (oldUrl && oldUrl !== url) URL.revokeObjectURL(oldUrl);
       currentUrlRef.current = url;
       setStableUrl(url);
     }, []);
@@ -150,13 +119,7 @@ const VisorPDFAislado = React.memo(
       <div className="relative w-full h-full min-h-0 bg-[#2f2f2f] overflow-hidden">
         <BlobProvider document={document}>
           {({ url, loading, error }) => (
-            <PDFBlobContent
-              url={url}
-              loading={loading}
-              error={error}
-              stableUrl={stableUrl}
-              onNewUrl={handleNewUrl}
-            />
+            <PDFBlobContent url={url} loading={loading} error={error} stableUrl={stableUrl} onNewUrl={handleNewUrl} />
           )}
         </BlobProvider>
       </div>
@@ -169,28 +132,31 @@ export default function AdminReportes() {
   const [reportes, setReportes] = useState<Reporte[]>([]);
   const [reporteSeleccionado, setReporteSeleccionado] = useState<Reporte | null>(null);
   
-  // Persistencia
   const [reporteGuardadoId, setReporteGuardadoId] = useSessionStorage<number | null>('admin_reporte_id', null);
-  const [filtroEstado, setFiltroEstado] = useSessionStorage<'Todos' | 'Enviado' | 'Borrador'>('admin_filtro_estado', 'Enviado'); 
+  const [filtroEstado, setFiltroEstado] = useSessionStorage<'Todos' | 'Enviado' | 'Borrador' | 'Aprobado'>('admin_filtro_estado', 'Enviado'); 
   const [filtroMes, setFiltroMes] = useSessionStorage<string>('admin_filtro_mes', 'Todos'); 
   const [filtroMunicipio, setFiltroMunicipio] = useSessionStorage<string>('admin_filtro_mun', 'Todos');
   const [ocultarAnuladasPDF, setOcultarAnuladasPDF] = useSessionStorage<boolean>('admin_ocultar_anuladas', false);
 
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
 
-  // Edición y anulación
-  const [actividadEnEdicion, setActividadEnEdicion] = useState<Actividad | null>(null);
+  // Edición de actividad
+  const [actividadEnEdicion, setActividadEnEdicion] = useState<any | null>(null);
   const [guardando, setGuardando] = useState(false);
-  const [modalAnular, setModalAnular] = useState<{ visible: boolean; actividadId: number | null; comentario: string }>({
-    visible: false, actividadId: null, comentario: ''
-  });
+  
+  const [modalAnular, setModalAnular] = useState<{ visible: boolean; actividadId: number | null; comentario: string }>({ visible: false, actividadId: null, comentario: '' });
   const [procesandoAnulacion, setProcesandoAnulacion] = useState(false);
+
+  // Validación GLOBAL del Reporte
+  const [modalRevision, setModalRevision] = useState<{ visible: boolean; tipo: 'Aprobar' | 'Regresar'; comentario: string }>({ visible: false, tipo: 'Aprobar', comentario: '' });
+  const [procesandoRevision, setProcesandoRevision] = useState(false);
 
   // Catálogos
   const [categoriasDB, setCategoriasDB] = useState<CategoriaDB[]>([]);
   const [accionesDB, setAccionesDB] = useState<AccionDB[]>([]);
   const [odsDB, setOdsDB] = useState<OdsDB[]>([]); 
   const [municipiosList, setMunicipiosList] = useState<MunicipioDB[]>([]);
+  const [sectoresDB, setSectoresDB] = useState<any[]>([]); 
   const [mesesDisponibles, setMesesDisponibles] = useState<{mes: number, anio: number, nombre: string}[]>([]);
 
   const [showHabilitarModal, setShowHabilitarModal] = useState(false);
@@ -202,31 +168,33 @@ export default function AdminReportes() {
   const [procesandoDeshabilitar, setProcesandoDeshabilitar] = useState(false);
 
   useEffect(() => {
-    if (showHabilitarModal || showDeshabilitarModal || modalAnular.visible || actividadEnEdicion) {
+    if (showHabilitarModal || showDeshabilitarModal || modalAnular.visible || actividadEnEdicion || modalRevision.visible) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'auto';
     }
     return () => { document.body.style.overflow = 'auto'; };
-  }, [showHabilitarModal, showDeshabilitarModal, modalAnular.visible, actividadEnEdicion]);
+  }, [showHabilitarModal, showDeshabilitarModal, modalAnular.visible, actividadEnEdicion, modalRevision.visible]);
 
   const fetchData = async () => {
     try {
-      const [catRes, accRes, odsRes, munRes, embRes, repRes] = await Promise.all([
+      const [catRes, accRes, odsRes, munRes, secRes, embRes, repRes] = await Promise.all([
         supabase.from('categorias_beneficiarios').select('id, nombre').eq('activo', true).order('id'),
         supabase.from('tipos_accion').select('id, nombre').eq('activo', true).order('id'),
         supabase.from('ods').select('id, numero, nombre, categoria_sostenibilidad').eq('activo', true).order('numero'),
         supabase.from('municipios').select('id, nombre').eq('activo', true).order('nombre'),
+        supabase.from('sectores_poblacion').select('id, nombre').eq('activo', true).order('id'),
         supabase.from('embajadores').select('usuario_id, municipios(nombre)'),
         supabase.from('reportes')
           .select(`id, mes, anio, estado, usuario_id, usuarios!reportes_usuario_id_fkey(nombre, apellido)`)
           .order('anio', { ascending: false }).order('mes', { ascending: false })
       ]);
 
-      if (catRes.data) setCategoriasDB([...catRes.data, { id: 99, nombre: 'Total Beneficiarios' }]);
+      if (catRes.data) setCategoriasDB(catRes.data);
       if (accRes.data) setAccionesDB(accRes.data);
       if (odsRes.data) setOdsDB(odsRes.data);
       if (munRes.data) setMunicipiosList(munRes.data);
+      if (secRes.data) setSectoresDB(secRes.data);
 
       const embMap = new Map();
       // @ts-ignore
@@ -256,21 +224,16 @@ export default function AdminReportes() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // ==========================================
-  // RECUPERAR EL ÚLTIMO EXPEDIENTE ABIERTO
-  // ==========================================
   useEffect(() => {
     if (reportes.length > 0 && reporteGuardadoId && !reporteSeleccionado) {
       const reporteRecuperado = reportes.find(r => r.id === reporteGuardadoId);
-      if (reporteRecuperado) {
-        seleccionarReporte(reporteRecuperado, true);
-      }
+      if (reporteRecuperado) seleccionarReporte(reporteRecuperado, true);
     }
   }, [reportes, reporteGuardadoId]);
-const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
+
+  const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
     if (cargandoDetalle) return;
 
-    // Verificamos si estamos refrescando el reporte que ya tenemos en pantalla
     const esMismoReporte = reporteSeleccionado?.id === reporte.id;
 
     if (!forceRefresh && esMismoReporte) {
@@ -280,14 +243,7 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
     }
 
     setReporteGuardadoId(reporte.id); 
-    
-    // MAGIA: Solo mostramos la pantalla de "Cargando..." y ocultamos el PDF 
-    // si estamos abriendo un expediente NUEVO. Si solo estamos guardando 
-    // una edición, NO apagamos la pantalla.
-    if (!esMismoReporte) {
-      setCargandoDetalle(true); 
-      setReporteSeleccionado(null); 
-    }
+    if (!esMismoReporte) { setCargandoDetalle(true); setReporteSeleccionado(null); }
     
     const strMes = String(reporte.mes).padStart(2, '0');
     const ultimoDia = new Date(reporte.anio, reporte.mes, 0).getDate();
@@ -301,32 +257,92 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
       });
 
       if (error) throw error;
-
+      
       if (data) {
-        setReporteSeleccionado({
-          ...reporte,
-          actividades: data.actividades || []
+        let actividadesCompletas = data.actividades || [];
+
+        // Generación de URLs firmadas
+        const pathsToSign: string[] = [];
+        actividadesCompletas.forEach((act: any) => {
+          if (act.evidencias) {
+            act.evidencias.forEach((ev: any) => {
+              if (ev.url_archivo) pathsToSign.push(ev.url_archivo);
+            });
+          }
+        });
+
+        const signedUrlsMap = new Map<string, string>();
+        if (pathsToSign.length > 0) {
+          const { data: signedData, error: signedErr } = await supabase.storage
+            .from('evidencias')
+            .createSignedUrls(pathsToSign, 3600); 
+
+          if (!signedErr && signedData) {
+            signedData.forEach(item => {
+              if (!item.error && item.signedUrl) {
+                signedUrlsMap.set(item.path || '', item.signedUrl);
+              }
+            });
+          }
+        }
+
+        actividadesCompletas = actividadesCompletas.map((act: any) => ({
+          ...act,
+          evidencias: act.evidencias?.map((ev: any) => ({
+            ...ev,
+            url: signedUrlsMap.get(ev.url_archivo) || ev.url || ''
+          }))
+        }));
+
+        setReporteSeleccionado({ 
+          ...reporte, 
+          actividades: actividadesCompletas 
         });
       }
 
     } catch (err: any) {
       notifyWithSound("Error cargando detalles: " + err.message, "error");
     } finally {
-      // Solo quitamos el "Cargando..." si lo habíamos encendido
-      if (!esMismoReporte) {
-        setCargandoDetalle(false); 
-      }
+      if (!esMismoReporte) setCargandoDetalle(false); 
     }
   };
+
+  const procesarRevisionReporte = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reporteSeleccionado) return;
+    
+    if (modalRevision.tipo === 'Regresar' && !modalRevision.comentario.trim()) {
+      return notifyWithSound("Debes incluir un comentario indicando por qué regresas el reporte.", "warning");
+    }
+    
+    setProcesandoRevision(true);
+    try {
+      const rpcName = modalRevision.tipo === 'Aprobar' ? 'aprobar_reporte' : 'rechazar_reporte';
+      
+      const { error } = await supabase.rpc(rpcName, {
+        p_reporte_id: reporteSeleccionado.id,
+        p_comentarios: modalRevision.comentario || null
+      });
+      
+      if (error) throw error;
+      
+      notifyWithSound(`Reporte ${modalRevision.tipo === 'Aprobar' ? 'aprobado' : 'regresado'} correctamente`, 'success');
+      setModalRevision({ visible: false, tipo: 'Aprobar', comentario: '' });
+      fetchData(); 
+      setReporteSeleccionado(prev => prev ? { ...prev, estado: modalRevision.tipo === 'Aprobar' ? 'Aprobado' : 'Regresado' } : null);
+    } catch(err: any) {
+       notifyWithSound("Error al actualizar: " + err.message, "error");
+    } finally {
+       setProcesandoRevision(false);
+    }
+  };
+
   const handleHabilitarMes = async (e: React.FormEvent) => {
     e.preventDefault();
     setProcesandoMes(true);
     try {
       const { data: existing } = await supabase.from('reportes').select('id').eq('mes', nuevoMes).eq('anio', nuevoAnio).limit(1);
-      if (existing && existing.length > 0) {
-        notifyWithSound("Este mes ya fue habilitado previamente.", "warning");
-        return;
-      }
+      if (existing && existing.length > 0) return notifyWithSound("Este mes ya fue habilitado previamente.", "warning");
       
       const { data: embajadores } = await supabase.from('embajadores').select('usuario_id').eq('activo', true);
       if (embajadores && embajadores.length > 0) {
@@ -346,33 +362,25 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
       } else {
         notifyWithSound("No hay embajadores activos en el sistema.", "warning");
       }
-    } catch (error: any) { 
-      notifyWithSound("Ocurrió un error: " + error.message, "error"); 
-    } 
+    } catch (error: any) { notifyWithSound("Ocurrió un error: " + error.message, "error"); } 
     finally { setProcesandoMes(false); }
   };
 
   const handleDeshabilitarMes = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!mesDeshabilitar) {
-      notifyWithSound("Selecciona un mes de la lista", "warning");
-      return;
-    }
+    if (!mesDeshabilitar) return notifyWithSound("Selecciona un mes de la lista", "warning");
+    
     setProcesandoDeshabilitar(true);
     try {
       const [mesSeleccionado, anioSeleccionado] = mesDeshabilitar.split('-').map(Number);
-      const { error } = await supabase.from('reportes')
-        .update({ estado: 'Deshabilitado' })
+      const { error } = await supabase.from('reportes').update({ estado: 'Deshabilitado' })
         .eq('mes', mesSeleccionado).eq('anio', anioSeleccionado).in('estado', ['Borrador', 'Rechazada']); 
       
       if (error) throw error;
-      
       notifyWithSound("Mes deshabilitado con éxito.", "success");
       setShowDeshabilitarModal(false);
       fetchData(); 
-    } catch (error: any) { 
-      notifyWithSound("Error al deshabilitar el mes: " + error.message, "error"); 
-    } 
+    } catch (error: any) { notifyWithSound("Error al deshabilitar el mes: " + error.message, "error"); } 
     finally { setProcesandoDeshabilitar(false); }
   };
 
@@ -383,10 +391,7 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
 
   const procesarCambioEstado = async (actividadId: number, nuevoEstadoVal: string, comentario: string | null) => {
     if (!reporteSeleccionado) return;
-    if (nuevoEstadoVal === 'Rechazada' && !comentario?.trim()) {
-      notifyWithSound("Debes ingresar un motivo de anulación.", "warning");
-      return;
-    }
+    if (nuevoEstadoVal === 'Rechazada' && !comentario?.trim()) return notifyWithSound("Debes ingresar un motivo de anulación.", "warning");
 
     setProcesandoAnulacion(true);
     try {
@@ -406,40 +411,46 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
       });
       notifyWithSound(nuevoEstadoVal === 'Rechazada' ? "Actividad anulada." : "Actividad restaurada.", "success");
       setModalAnular({ visible: false, actividadId: null, comentario: '' });
-    } catch (error) { 
-      notifyWithSound("Error al actualizar el estado de la actividad.", "error"); 
-    } finally {
-      setProcesandoAnulacion(false);
-    }
+    } catch (error) { notifyWithSound("Error al actualizar el estado de la actividad.", "error"); } 
+    finally { setProcesandoAnulacion(false); }
   };
 
+  const abrirModalEdicion = (act: any) => {
+    const secObj: any = {};
+    if (act.actividad_sectores) {
+       act.actividad_sectores.forEach((s: any) => {
+          secObj[s.sector_id] = { hombres: s.hombres, mujeres: s.mujeres, total: s.total };
+       });
+    }
+    setActividadEnEdicion({ ...act, sectores: secObj });
+  };
+
+  // Modificado para soportar checkboxes
   const handleChangeSimple = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     if(!actividadEnEdicion) return;
-    const { name, value } = e.target;
-    setActividadEnEdicion({ ...actividadEnEdicion, [name]: value });
+    const { name, value, type } = e.target;
+    const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
+    setActividadEnEdicion({ ...actividadEnEdicion, [name]: val });
   };
 
   const handleDomicilioChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     if(!actividadEnEdicion) return;
     const { name, value } = e.target;
-    setActividadEnEdicion(prev => prev ? ({ ...prev, domicilio: { ...prev.domicilio, [name]: name === 'municipio' ? Number(value) : value } }) : null);
+    setActividadEnEdicion((prev: any) => prev ? ({ ...prev, domicilio: { ...prev.domicilio, [name]: name === 'municipio' ? Number(value) : value } }) : null);
   };
 
   const toggleOds = (odsId: number) => {
-    setActividadEnEdicion(prev => {
+    setActividadEnEdicion((prev: any) => {
       if(!prev) return prev;
       const arr = prev.ods_seleccionados || [];
-      if (arr.includes(odsId)) return { ...prev, ods_seleccionados: arr.filter(id => id !== odsId) };
-      if (arr.length >= 4) { 
-        notifyWithSound("Máximo 4 ODS permitidos.", "warning"); 
-        return prev; 
-      }
+      if (arr.includes(odsId)) return { ...prev, ods_seleccionados: arr.filter((id: number) => id !== odsId) };
+      if (arr.length >= 4) { notifyWithSound("Máximo 4 ODS permitidos.", "warning"); return prev; }
       return { ...prev, ods_seleccionados: [...arr, odsId] };
     });
   };
 
   const handleBeneficiarioChange = (categoriaId: number, campo: 'hombres' | 'mujeres', value: string) => {
-    setActividadEnEdicion(prev => {
+    setActividadEnEdicion((prev: any) => {
         if(!prev) return prev;
         const currentCat = prev.beneficiarios?.[categoriaId] || { hombres: '0', mujeres: '0', total: '0' };
         return {
@@ -449,9 +460,73 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
     });
   };
 
+  const handleSectorChange = (sectorId: number, campo: 'hombres' | 'mujeres', value: string) => {
+    setActividadEnEdicion((prev: any) => {
+      if (!prev) return prev;
+      
+      let totalCatSum = 0;
+      if (prev.beneficiarios) {
+        Object.entries(prev.beneficiarios).forEach(([id, val]: [string, any]) => {
+          if (Number(id) !== 99) { 
+            totalCatSum += parseInt(val[campo] || '0', 10);
+          }
+        });
+      }
+
+      let sumOtrosSectores = 0;
+      if (prev.sectores) {
+        Object.entries(prev.sectores).forEach(([id, val]: [string, any]) => {
+          if (Number(id) !== sectorId) {
+            sumOtrosSectores += parseInt(val[campo] || '0', 10);
+          }
+        });
+      }
+
+      const maxPermitido = totalCatSum - sumOtrosSectores;
+      let valStr = value;
+      let valNum = parseInt(value || '0', 10);
+      
+      if (valNum > maxPermitido) {
+        notifyWithSound(`Límite alcanzado: Solo tienes ${maxPermitido} ${campo} disponibles según tu registro de edades.`, 'warning');
+        valStr = maxPermitido.toString();
+      }
+
+      const currentSec = prev.sectores?.[sectorId] || { hombres: '0', mujeres: '0', total: '0' };
+      
+      return { ...prev, sectores: { ...prev.sectores, [sectorId]: { ...currentSec, [campo]: valStr } } };
+    });
+  };
+
   const guardarEdicionActividad = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reporteSeleccionado || !actividadEnEdicion) return;
+
+    let totalCatH = 0, totalCatM = 0;
+    let totalSecH = 0, totalSecM = 0;
+
+    // Solo validamos beneficiarios si NO es una actividad externa
+    if (!actividadEnEdicion.es_externa) {
+      if (actividadEnEdicion.beneficiarios) {
+        Object.entries(actividadEnEdicion.beneficiarios).forEach(([id, val]: [any, any]) => {
+          if (Number(id) !== 99) {
+            totalCatH += parseInt(val.hombres || '0', 10);
+            totalCatM += parseInt(val.mujeres || '0', 10);
+          }
+        });
+      }
+      
+      if (actividadEnEdicion.sectores) {
+        Object.values(actividadEnEdicion.sectores).forEach((val: any) => {
+          totalSecH += parseInt(val.hombres || '0', 10);
+          totalSecM += parseInt(val.mujeres || '0', 10);
+        });
+      }
+
+      if (totalSecH > totalCatH || totalSecM > totalCatM) {
+        notifyWithSound("Error: La cantidad en Sectores supera el total de Beneficiarios.", "error");
+        return;
+      }
+    }
 
     setGuardando(true);
     try {
@@ -467,21 +542,24 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
         hora_fin: actividadEnEdicion.hora_fin || null,
         lugar: actividadEnEdicion.lugar, 
         municipio_id: actividadEnEdicion.domicilio?.municipio || null,
-        calle: actividadEnEdicion.domicilio?.calle, 
-        colonia: actividadEnEdicion.domicilio?.colonia,
-        rango_edad_beneficiarios: actividadEnEdicion.rango_edad, 
-        rango_edad: actividadEnEdicion.rango_edad,
+        calle: actividadEnEdicion.domicilio?.calle || null, 
+        colonia: actividadEnEdicion.domicilio?.colonia || null,
+        rango_edad_beneficiarios: actividadEnEdicion.es_externa ? null : actividadEnEdicion.rango_edad, 
+        rango_edad: actividadEnEdicion.es_externa ? null : actividadEnEdicion.rango_edad,
         descripcion: actividadEnEdicion.descripcion,
+        es_externa: actividadEnEdicion.es_externa || false,
+        organizador_externo: actividadEnEdicion.es_externa ? actividadEnEdicion.organizador_externo : null,
         fecha_actualizacion: new Date().toISOString()
       }).eq('id', actId);
       
       if (errAct) throw errAct;
 
+      // Actualizar Relaciones
       await supabase.from('actividad_beneficiarios').delete().eq('actividad_id', actId);
-      if (actividadEnEdicion.beneficiarios) {
+      if (!actividadEnEdicion.es_externa && actividadEnEdicion.beneficiarios) {
         const benefPayload = Object.entries(actividadEnEdicion.beneficiarios)
           .filter(([id]) => Number(id) !== 99)
-          .map(([id, val]) => ({
+          .map(([id, val]: [string, any]) => ({
             actividad_id: actId, categoria_id: Number(id),
             hombres: parseInt(val.hombres || '0', 10), mujeres: parseInt(val.mujeres || '0', 10),
             total: parseInt(val.hombres || '0', 10) + parseInt(val.mujeres || '0', 10),
@@ -490,13 +568,25 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
         if (benefPayload.length > 0) await supabase.from('actividad_beneficiarios').insert(benefPayload);
       }
 
+      await supabase.from('actividad_sectores').delete().eq('actividad_id', actId);
+      if (!actividadEnEdicion.es_externa && actividadEnEdicion.sectores) {
+        const secPayload = Object.entries(actividadEnEdicion.sectores)
+          .map(([id, val]: [string, any]) => ({
+            actividad_id: actId, sector_id: Number(id),
+            hombres: parseInt(val.hombres || '0', 10),
+            mujeres: parseInt(val.mujeres || '0', 10),
+            total: parseInt(val.hombres || '0', 10) + parseInt(val.mujeres || '0', 10)
+          })).filter(s => s.total > 0);
+        if (secPayload.length > 0) await supabase.from('actividad_sectores').insert(secPayload);
+      }
+
       await supabase.from('actividad_acciones').delete().eq('actividad_id', actId);
       if (!isNaN(tipoAccionIdInt) && tipoAccionIdInt > 0) {
         await supabase.from('actividad_acciones').insert({ actividad_id: actId, tipo_accion_id: tipoAccionIdInt, cantidad: 1, creado_en: new Date().toISOString(), actualizado_en: new Date().toISOString() });
       }
 
       const areasSeleccionadas = new Set<number>();
-      actividadEnEdicion.ods_seleccionados?.forEach(odsId => {
+      actividadEnEdicion.ods_seleccionados?.forEach((odsId: number) => {
         const cat = odsDB.find(o => o.id === odsId)?.categoria_sostenibilidad?.toLowerCase() || '';
         if (cat.includes('econ')) areasSeleccionadas.add(1);
         if (cat.includes('social') || cat.includes('sociedad')) areasSeleccionadas.add(2);
@@ -511,7 +601,7 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
 
       await supabase.from('actividad_ods').delete().eq('actividad_id', actId);
       if (actividadEnEdicion.ods_seleccionados && actividadEnEdicion.ods_seleccionados.length > 0) {
-        await supabase.from('actividad_ods').insert(actividadEnEdicion.ods_seleccionados.map((odsId, idx) => ({ actividad_id: actId, ods_id: odsId, es_principal: idx === 0 })));
+        await supabase.from('actividad_ods').insert(actividadEnEdicion.ods_seleccionados.map((odsId: number, idx: number) => ({ actividad_id: actId, ods_id: odsId, es_principal: idx === 0 })));
       }
 
       notifyWithSound('Actividad modificada exitosamente', 'success');
@@ -526,7 +616,6 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
 
   const snapshotParaPDF = useMemo(() => {
     if (!reporteSeleccionado) return null;
-
     return {
       ...reporteSeleccionado,
       actividades: ocultarAnuladasPDF
@@ -535,18 +624,17 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
     };
   }, [reporteSeleccionado, ocultarAnuladasPDF]);
 
-  // Memorizamos el documento en sí
   const pdfDocument = useMemo<PDFDocumentElement | null>(() => {
     if (!snapshotParaPDF || categoriasDB.length === 0) return null;
-
     return (
       <ReportePDF
         snapshot={snapshotParaPDF}
-        categorias={categoriasDB}
+        categorias={categoriasDB.filter(c => c.id !== 99)} 
         acciones={accionesDB}
+        sectores={sectoresDB}
       />
     ) as PDFDocumentElement;
-  }, [snapshotParaPDF, categoriasDB, accionesDB]);
+  }, [snapshotParaPDF, categoriasDB, accionesDB, sectoresDB]);
 
   const reportesFiltrados = reportes.filter(r => {
     return (filtroEstado === 'Todos' || r.estado === filtroEstado) &&
@@ -557,7 +645,39 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
   return (
     <div className="flex flex-col h-auto lg:h-[calc(100vh-100px)] min-h-screen lg:min-h-0 relative p-2 md:p-4 bg-gray-50/50">
       
-      {/* ================= MODAL ANULACIÓN ================= */}
+      {/* ================= MODAL REVISIÓN GLOBAL REPORTE ================= */}
+      {modalRevision.visible && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-2 flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+              <h3 className={`font-black text-lg flex items-center gap-2 ${modalRevision.tipo === 'Aprobar' ? 'text-emerald-700' : 'text-amber-700'}`}>
+                {modalRevision.tipo === 'Aprobar' ? <CheckCircle2 size={20}/> : <CornerUpLeft size={20}/>}
+                {modalRevision.tipo === 'Aprobar' ? 'Aprobar Expediente' : 'Regresar Expediente'}
+              </h3>
+              <button onClick={() => setModalRevision({ visible: false, tipo: 'Aprobar', comentario: '' })} className="p-1 hover:bg-gray-200 rounded-full text-gray-500"><X size={20} /></button>
+            </div>
+            <form onSubmit={procesarRevisionReporte} className="p-4 md:p-6 space-y-4">
+              {modalRevision.tipo === 'Regresar' ? (
+                <>
+                  <p className="text-sm text-gray-600">Por favor, indica el motivo por el cual regresas este reporte. El embajador podrá editarlo y volver a enviarlo.</p>
+                  <textarea required autoFocus rows={4} className="w-full border border-gray-300 rounded-xl p-3 text-sm outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 resize-none shadow-sm" placeholder="Ej. Faltan evidencias en la actividad 2..." value={modalRevision.comentario} onChange={e => setModalRevision({ ...modalRevision, comentario: e.target.value })} />
+                </>
+              ) : (
+                <p className="text-sm text-gray-600">¿Confirmas que el expediente cumple con todos los requisitos y evidencias? Una vez aprobado, será catalogado como válido en el sistema.</p>
+              )}
+              <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
+                <button type="button" onClick={() => setModalRevision({ visible: false, tipo: 'Aprobar', comentario: '' })} className="flex-1 py-2.5 rounded-xl font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-100">Cancelar</button>
+                <button type="submit" disabled={procesandoRevision} className={`flex-1 flex justify-center items-center gap-2 py-2.5 rounded-xl font-bold text-white disabled:opacity-70 ${modalRevision.tipo === 'Aprobar' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
+                  {procesandoRevision ? <Loader2 className="animate-spin" size={16} /> : null}
+                  Confirmar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL ANULACIÓN ACTIVIDAD ================= */}
       {modalAnular.visible && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-2 flex flex-col overflow-hidden">
@@ -579,7 +699,7 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
         </div>
       )}
 
-      {/* ================= MODAL EDICIÓN ================= */}
+      {/* ================= MODAL EDICIÓN ACTIVIDAD ================= */}
       {actividadEnEdicion && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-2 sm:p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] mx-1 sm:mx-2 flex flex-col">
@@ -593,6 +713,36 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
                 
                 <div className="space-y-4">
                   <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">Datos Generales</h4>
+                  
+                  {/* SECCIÓN EXTERNA AGREGADA */}
+                  <div className="bg-purple-50/50 p-4 border border-purple-100 rounded-xl mb-4">
+                    <label className="flex items-center gap-2 cursor-pointer mb-2">
+                      <input 
+                        type="checkbox" 
+                        name="es_externa" 
+                        checked={actividadEnEdicion.es_externa || false} 
+                        onChange={handleChangeSimple} 
+                        className="w-4 h-4 text-purple-600 rounded border-gray-300 focus:ring-purple-600"
+                      />
+                      <span className="text-sm font-bold text-gray-800">
+                        ¿Fue una actividad organizada por un tercero (Escuela, Institución, Empresa)?
+                      </span>
+                    </label>
+                    {actividadEnEdicion.es_externa && (
+                      <div className="mt-3 ml-6">
+                        <label className="block text-xs font-bold text-gray-600 mb-1">Nombre del Organizador o Institución <span className="text-red-500">*</span></label>
+                        <input 
+                          required
+                          type="text" 
+                          name="organizador_externo" 
+                          value={actividadEnEdicion.organizador_externo || ''} 
+                          onChange={handleChangeSimple} 
+                          className="w-full border border-gray-300 rounded-lg p-2 text-sm bg-white outline-none focus:border-purple-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-gray-600 mb-1">Nombre</label>
@@ -633,50 +783,83 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
                 <div className="space-y-4">
                   <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">Ubicación</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div><label className="block text-xs font-bold text-gray-600 mb-1">Lugar</label><input type="text" name="lugar" value={actividadEnEdicion.lugar || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm"/></div>
-                    <div><label className="block text-xs font-bold text-gray-600 mb-1">Municipio</label><select name="municipio" value={actividadEnEdicion.domicilio?.municipio || ''} onChange={handleDomicilioChange} className="w-full border border-gray-300 rounded-lg p-2 text-sm"><option value="">-- Selecciona --</option>{municipiosList.map(mun => <option key={mun.id} value={mun.id}>{mun.nombre}</option>)}</select></div>
-                    <div><label className="block text-xs font-bold text-gray-600 mb-1">Colonia</label><input type="text" name="colonia" value={actividadEnEdicion.domicilio?.colonia || ''} onChange={handleDomicilioChange} className="w-full border border-gray-300 rounded-lg p-2 text-sm"/></div>
-                    <div><label className="block text-xs font-bold text-gray-600 mb-1">Calle</label><input type="text" name="calle" value={actividadEnEdicion.domicilio?.calle || ''} onChange={handleDomicilioChange} className="w-full border border-gray-300 rounded-lg p-2 text-sm"/></div>
+                    <div><label className="block text-xs font-bold text-gray-600 mb-1">Lugar <span className="text-red-500">*</span></label><input required type="text" name="lugar" value={actividadEnEdicion.lugar || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:border-[#00689D]"/></div>
+                    <div><label className="block text-xs font-bold text-gray-600 mb-1">Municipio <span className="text-red-500">*</span></label><select required name="municipio" value={actividadEnEdicion.domicilio?.municipio || ''} onChange={handleDomicilioChange} className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:border-[#00689D]"><option value="">-- Selecciona --</option>{municipiosList.map(mun => <option key={mun.id} value={mun.id}>{mun.nombre}</option>)}</select></div>
+                    {/* CAMPOS DINÁMICOS COLONIA Y CALLE */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-600 mb-1">Colonia {!actividadEnEdicion.es_externa && <span className="text-red-500">*</span>}</label>
+                      <input required={!actividadEnEdicion.es_externa} type="text" name="colonia" value={actividadEnEdicion.domicilio?.colonia || ''} onChange={handleDomicilioChange} className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:border-[#00689D]"/>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-600 mb-1">Calle {!actividadEnEdicion.es_externa && <span className="text-red-500">*</span>}</label>
+                      <input required={!actividadEnEdicion.es_externa} type="text" name="calle" value={actividadEnEdicion.domicilio?.calle || ''} onChange={handleDomicilioChange} className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:border-[#00689D]"/>
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  <div className="space-y-4">
-                    <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">Beneficiarios</h4>
-                    {categoriasDB.map(cat => {
-                      const esFilaTotal = cat.id === 99;
-                      let valH = 0, valM = 0;
-                      if (esFilaTotal) {
-                        categoriasDB.forEach(c => {
-                          if (c.id !== 99) { 
-                            valH += parseInt(actividadEnEdicion.beneficiarios?.[c.id]?.hombres || '0', 10); 
-                            valM += parseInt(actividadEnEdicion.beneficiarios?.[c.id]?.mujeres || '0', 10); 
-                          }
+                {!actividadEnEdicion.es_externa && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="space-y-4">
+                      
+                      <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">1. Beneficiarios (Edades)</h4>
+                      {categoriasDB.filter(c => c.id !== 99).map(cat => {
+                        const valH = parseInt(actividadEnEdicion.beneficiarios?.[cat.id]?.hombres || '0', 10); 
+                        const valM = parseInt(actividadEnEdicion.beneficiarios?.[cat.id]?.mujeres || '0', 10); 
+
+                        return (
+                          <div key={cat.id} className="flex gap-2 items-center p-2 rounded-lg border bg-gray-50 border-gray-100">
+                            <span className="w-1/3 text-[10px] leading-tight font-bold text-gray-600">{cat.nombre}</span>
+                            <input type="number" placeholder="0" value={(valH+valM)>0 ? valH+valM : ''} disabled tabIndex={-1} className="w-1/5 border text-center rounded p-1 text-xs cursor-not-allowed bg-gray-100 text-gray-500 [appearance:textfield]" />
+                            <input type="number" placeholder="H" min="0" value={valH>0 ? valH : ''} onChange={e => handleBeneficiarioChange(cat.id, 'hombres', e.target.value)} className="w-1/5 text-center border rounded p-1 text-xs border-gray-300 focus:outline-none focus:border-[#00689D] [appearance:textfield]" />
+                            <input type="number" placeholder="M" min="0" value={valM>0 ? valM : ''} onChange={e => handleBeneficiarioChange(cat.id, 'mujeres', e.target.value)} className="w-1/5 text-center border rounded p-1 text-xs border-gray-300 focus:outline-none focus:border-[#00689D] [appearance:textfield]" />
+                          </div>
+                        );
+                      })}
+
+                      <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2 mt-6">2. Sectores Vulnerables</h4>
+                      {sectoresDB.map(sec => {
+                        const valH = parseInt((actividadEnEdicion as any).sectores?.[sec.id]?.hombres || '0', 10); 
+                        const valM = parseInt((actividadEnEdicion as any).sectores?.[sec.id]?.mujeres || '0', 10); 
+
+                        return (
+                          <div key={sec.id} className="flex gap-2 items-center p-2 rounded-lg border bg-gray-50 border-gray-100">
+                            <span className="w-1/3 text-[10px] leading-tight font-bold text-gray-600">{sec.nombre}</span>
+                            <input type="number" placeholder="0" value={(valH+valM)>0 ? valH+valM : ''} disabled tabIndex={-1} className="w-1/5 border text-center rounded p-1 text-xs cursor-not-allowed bg-gray-100 text-gray-500 [appearance:textfield]" />
+                            <input type="number" placeholder="H" min="0" value={valH>0 ? valH : ''} onChange={e => handleSectorChange(sec.id, 'hombres', e.target.value)} className="w-1/5 text-center border rounded p-1 text-xs border-gray-300 focus:outline-none focus:border-[#00689D] [appearance:textfield]" />
+                            <input type="number" placeholder="M" min="0" value={valM>0 ? valM : ''} onChange={e => handleSectorChange(sec.id, 'mujeres', e.target.value)} className="w-1/5 text-center border rounded p-1 text-xs border-gray-300 focus:outline-none focus:border-[#00689D] [appearance:textfield]" />
+                          </div>
+                        );
+                      })}
+
+                      {(() => {
+                        let globalH = 0, globalM = 0;
+                        categoriasDB.filter(c => c.id !== 99).forEach(c => {
+                          globalH += parseInt(actividadEnEdicion.beneficiarios?.[c.id]?.hombres || '0', 10);
+                          globalM += parseInt(actividadEnEdicion.beneficiarios?.[c.id]?.mujeres || '0', 10);
                         });
-                      } else { 
-                        valH = parseInt(actividadEnEdicion.beneficiarios?.[cat.id]?.hombres || '0', 10); 
-                        valM = parseInt(actividadEnEdicion.beneficiarios?.[cat.id]?.mujeres || '0', 10); 
-                      }
 
-                      return (
-                        <div key={cat.id} className={`flex gap-2 items-center p-2 rounded-lg border ${esFilaTotal ? 'bg-[#00689D]/5 border-[#00689D]/20' : 'bg-gray-50 border-gray-100'}`}>
-                          <span className={`w-1/3 text-[10px] leading-tight ${esFilaTotal ? 'font-black text-[#00689D]' : 'font-bold text-gray-600'}`}>{cat.nombre}</span>
-                          <input type="number" placeholder="0" value={(valH+valM)>0 ? valH+valM : ''} disabled tabIndex={-1} className={`w-1/5 border text-center rounded p-1 text-xs cursor-not-allowed ${esFilaTotal ? 'bg-[#00689D]/10 text-[#00689D] font-bold' : 'bg-gray-100 text-gray-500'}`} />
-                          <input type="number" placeholder="H" value={valH>0 ? valH : ''} onChange={e => handleBeneficiarioChange(cat.id, 'hombres', e.target.value)} disabled={esFilaTotal} className={`w-1/5 text-center border rounded p-1 text-xs ${esFilaTotal ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'border-gray-300 focus:border-[#00689D]'}`} />
-                          <input type="number" placeholder="M" value={valM>0 ? valM : ''} onChange={e => handleBeneficiarioChange(cat.id, 'mujeres', e.target.value)} disabled={esFilaTotal} className={`w-1/5 text-center border rounded p-1 text-xs ${esFilaTotal ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'border-gray-300 focus:border-[#00689D]'}`} />
-                        </div>
-                      );
-                    })}
+                        return (
+                          <div className="mt-6 flex gap-2 items-center p-2 rounded-lg border bg-[#00689D]/5 border-[#00689D]/20 shadow-sm">
+                            <span className="w-1/3 text-[10px] leading-tight font-black text-[#00689D]">TOTAL BENEFICIARIOS</span>
+                            <input type="number" value={(globalH+globalM)>0 ? globalH+globalM : ''} disabled tabIndex={-1} className="w-1/5 border text-center rounded p-1 text-xs cursor-not-allowed bg-[#00689D]/10 text-[#00689D] font-bold" />
+                            <input type="number" value={globalH>0 ? globalH : ''} disabled className="w-1/5 text-center border rounded p-1 text-xs cursor-not-allowed bg-[#00689D]/10 text-[#00689D] font-bold" />
+                            <input type="number" value={globalM>0 ? globalM : ''} disabled className="w-1/5 text-center border rounded p-1 text-xs cursor-not-allowed bg-[#00689D]/10 text-[#00689D] font-bold" />
+                          </div>
+                        );
+                      })()}
+
+                    </div>
+                    
+                    <div className="space-y-4">
+                      <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">Rango de Edad Promedio</h4>
+                      <input type="text" name="rango_edad" value={actividadEnEdicion.rango_edad || ''} onChange={handleChangeSimple} placeholder="Ej: 15 a 18 años" className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:border-[#00689D]"/>
+                    </div>
                   </div>
-                  <div className="space-y-4">
-                    <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">Rango de Edad Promedio</h4>
-                    <input type="text" name="rango_edad" value={actividadEnEdicion.rango_edad || ''} onChange={handleChangeSimple} placeholder="Ej: 15 a 18 años" className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:border-[#00689D]"/>
-                  </div>
-                </div>
+                )}
 
                 <div className="space-y-4">
                   <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">Descripción</h4>
-                  <textarea name="descripcion" rows={3} value={actividadEnEdicion.descripcion || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#00689D] outline-none resize-none"/>
+                  <textarea name="descripcion" required rows={3} value={actividadEnEdicion.descripcion || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#00689D] outline-none resize-none"/>
                 </div>
 
               </form>
@@ -684,7 +867,7 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
 
             <div className="p-3 sm:p-4 border-t border-gray-200 bg-gray-50 flex flex-col sm:flex-row gap-3 shrink-0 rounded-b-2xl">
               <button type="button" onClick={() => setActividadEnEdicion(null)} className="w-full sm:flex-1 py-3 rounded-xl font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-100 transition-colors">Cancelar</button>
-              <button form="form-edicion-admin" type="submit" disabled={guardando} className="w-full sm:flex-1 py-3 rounded-xl font-bold text-white bg-[#00689D] hover:bg-[#00527A] flex items-center justify-center gap-2 shadow-md disabled:opacity-70">
+              <button form="form-edicion-admin" type="submit" disabled={guardando} className="w-full sm:flex-1 py-3 rounded-xl font-bold text-white bg-[#00689D] hover:bg-[#00527A] flex items-center justify-center gap-2 shadow-md disabled:opacity-70 transition-colors">
                 {guardando ? <><Loader2 className="animate-spin" size={18}/> Guardando...</> : <><Save size={20}/> Guardar Cambios</>}
               </button>
             </div>
@@ -800,7 +983,7 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
                 <div key={reporte.id} onClick={() => seleccionarReporte(reporte)} className={`p-4 border-b cursor-pointer transition-colors ${reporteSeleccionado?.id === reporte.id ? 'bg-blue-50 border-l-4 border-l-[#00689D]' : 'hover:bg-gray-50 border-l-4 border-l-transparent'}`}>
                   <div className="flex justify-between items-start mb-1">
                     <p className="text-[10px] font-black uppercase text-gray-400">{reporte.nombre_mes}</p>
-                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${reporte.estado === 'Enviado' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-600'}`}>{reporte.estado}</span>
+                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${reporte.estado === 'Enviado' ? 'bg-emerald-100 text-emerald-700' : reporte.estado === 'Aprobado' ? 'bg-green-600 text-white' : reporte.estado === 'Regresado' ? 'bg-amber-100 text-amber-700' : 'bg-gray-200 text-gray-600'}`}>{reporte.estado}</span>
                   </div>
                   <p className={`text-sm ${reporteSeleccionado?.id === reporte.id ? 'font-bold text-[#00689D]' : 'font-semibold text-gray-800'}`}>{reporte.embajador.nombre}</p>
                   <p className="text-xs text-gray-500 mt-1 flex items-center gap-1"><MapPin size={10}/> {reporte.municipio_nombre}</p>
@@ -818,11 +1001,6 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
               <button onClick={() => seleccionarReporte(reporteSeleccionado, true)} className="text-[#00689D] flex w-full sm:w-auto justify-center items-center gap-1.5 text-xs font-bold bg-blue-50 px-3 py-2 rounded-lg hover:bg-blue-100"><RefreshCw size={14}/> Refrescar</button>
             </div>
             
-            {/*
-              Si se está refrescando el mismo expediente, conservamos el PDF
-              visible y mostramos el loader encima. Así evitamos desmontar el
-              PDFViewer y provocar parpadeos o reconstrucciones innecesarias.
-            */}
             {categoriasDB.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-gray-50/50">
                 <Loader2 size={48} className="animate-spin text-[#00689D] mb-4" />
@@ -863,7 +1041,21 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
                   )}
                 </div>
 
+                {/* === PANEL DE OPCIONES DERECHO === */}
                 <div className="w-full xl:w-80 bg-gray-50 border-b xl:border-b-0 xl:border-l border-gray-200 flex flex-col shrink-0 order-1 xl:order-2">
+                  
+                  {reporteSeleccionado.estado === 'Enviado' && (
+                    <div className="p-4 bg-white border-b border-gray-200 flex flex-col gap-2">
+                      <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">Revisión del Expediente</h4>
+                      <button onClick={() => setModalRevision({ visible: true, tipo: 'Aprobar', comentario: '' })} className="w-full flex items-center justify-center gap-2 bg-emerald-500 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-emerald-600 transition-colors shadow-sm">
+                        <CheckCircle2 size={18} /> Aprobar Reporte
+                      </button>
+                      <button onClick={() => setModalRevision({ visible: true, tipo: 'Regresar', comentario: '' })} className="w-full flex items-center justify-center gap-2 bg-amber-500 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-amber-600 transition-colors shadow-sm">
+                        <CornerUpLeft size={18} /> Regresar al Embajador
+                      </button>
+                    </div>
+                  )}
+
                   <div className="p-4 bg-white border-b border-gray-200 flex items-center justify-between">
                     <div className="flex items-center gap-2"><Settings2 size={16}/><span className="text-xs font-bold">Ocultar anuladas en PDF</span></div>
                     <button onClick={() => setOcultarAnuladasPDF(!ocultarAnuladasPDF)} className={`w-10 h-5 rounded-full relative flex items-center ${ocultarAnuladasPDF ? 'bg-[#00689D]' : 'bg-gray-300'}`}>
@@ -872,6 +1064,7 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
                   </div>
 
                   <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[300px] xl:max-h-none">
+                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2">Edición de Actividades</h4>
                     {reporteSeleccionado.actividades && reporteSeleccionado.actividades.length === 0 ? (
                       <div className="text-center text-sm text-gray-400 mt-4">Sin actividades en este reporte.</div>
                     ) : (
@@ -879,7 +1072,7 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
                         <div key={act.id} className={`p-3 rounded-xl border ${act.anulada ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}`}>
                           <p className={`text-sm font-bold truncate mb-3 ${act.anulada ? 'line-through text-red-600' : ''}`}>{idx + 1}. {act.nombre}</p>
                           <div className="flex gap-2">
-                            <button onClick={() => setActividadEnEdicion(act)} title="Editar actividad" className="flex items-center justify-center px-3 py-1.5 rounded-lg border bg-gray-100 hover:bg-gray-200 text-gray-700"><Edit2 size={16} /></button>
+                            <button onClick={() => abrirModalEdicion(act)} title="Editar actividad" className="flex items-center justify-center px-3 py-1.5 rounded-lg border bg-gray-100 hover:bg-gray-200 text-gray-700"><Edit2 size={16} /></button>
                             <button onClick={() => toggleAnularActividad(act.id, act.anulada)} className={`flex-1 flex justify-center items-center py-1.5 text-[10px] sm:text-xs font-bold rounded-lg border transition-colors ${act.anulada ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}>
                               {act.anulada ? 'Restaurar' : 'Anular Actividad'}
                             </button>
@@ -902,7 +1095,7 @@ const seleccionarReporte = async (reporte: Reporte, forceRefresh = false) => {
             )}
           </div>
         ) : (
-          <div className="w-full lg:flex-1 bg-white rounded-2xl flex items-center justify-center flex-col text-gray-400 py-12 lg:py-0">
+          <div className="w-full lg:flex-1 bg-white rounded-2xl flex items-center justify-center flex-col text-gray-400 py-12 lg:py-0 shadow-sm border border-gray-100">
             <FileText size={48} className="mb-4 opacity-20"/>
             <p className="font-bold">Selecciona un expediente de la lista</p>
           </div>

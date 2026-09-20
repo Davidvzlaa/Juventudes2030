@@ -1,17 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { createClient } from '@supabase/supabase-js'; 
 import { 
   Users, PlusCircle, Search, Edit2, Trash2, X, Save, 
-  Loader2, UploadCloud, MapPin, Calendar, Mail, Phone, Shield, Folder, Lock, Clock
+  Loader2, UploadCloud, MapPin, Calendar, Mail, Phone, Shield, Folder, Lock, Clock, Key
 } from 'lucide-react';
 import { toast } from 'sonner';
-
-// Importaciones de date-fns para un manejo de fechas robusto y amigable
 import { differenceInYears, parseISO, format, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-// Importaciones de shadcn/ui
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,7 +21,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 // ==========================================
-// INTERFACES (TypeScript estricto)
+// INTERFACES
 // ==========================================
 interface Rol { id: number; nombre: string; }
 interface Municipio { id: number; nombre: string; }
@@ -49,33 +46,41 @@ interface Usuario {
   telefono: string | null;
   fecha_nacimiento: string | null;
   activo: boolean;
-  ultimo_acceso: string | null; // <-- NUEVA COLUMNA
-  roles: Rol | null;
+  ultimo_acceso: string | null;
+  usuario_roles?: { roles: Rol }[]; 
   embajadores?: EmbajadorInfo[] | EmbajadorInfo;
   actividades?: ActividadInfo[];
 }
 
-// Obtenemos las credenciales de entorno
+// ==========================================
+// CREDENCIALES FRONTEND
+// ==========================================
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-// ==========================================
-// CONSTANTES GLOBALES
-// ==========================================
 const PASSWORD_TEMPORAL_DEFAULT = 'Juventudes2030*26';
 const ROL_EMBAJADOR = 'Embajador';
 const ROL_ADMIN = 'Administrador';
+const ROL_PROGRAMADOR = 'Programador';
 
 export default function AdminUsuariosDinamico() {
+  // AHORA ES UN ARREGLO PARA SOPORTAR MÚLTIPLES ROLES DEL USUARIO ACTUAL
+  const [currentUserRole, setCurrentUserRole] = useState<string[]>([]);
+  
   const [showForm, setShowForm] = useState(false);
   const [usuariosList, setUsuariosList] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Estados para Alert Dialog (Eliminar)
+  // Estados Dialog (Eliminar)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Estados Cambio Contraseña Forzado
+  const [modalPassword, setModalPassword] = useState<{ visible: boolean; userId: string; userName: string }>({ visible: false, userId: '', userName: '' });
+  const [nuevaPasswordForzada, setNuevaPasswordForzada] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   const [roles, setRoles] = useState<Rol[]>([]);
   const [municipios, setMunicipios] = useState<Municipio[]>([]);
@@ -89,7 +94,9 @@ export default function AdminUsuariosDinamico() {
   // Formulario
   const [editId, setEditId] = useState<string | null>(null);
   const [formUsuario, setFormUsuario] = useState({
-    nombre: '', apellido: '', correo: '', telefono: '', fecha_nacimiento: '', rol_id: 0, activo: true, visible: true
+    nombre: '', apellido: '', correo: '', telefono: '', fecha_nacimiento: '', 
+    roles_ids: [] as number[], // Arreglo para soportar múltiples roles
+    activo: true, visible: true
   });
   const [formEmbajador, setFormEmbajador] = useState({ municipio_id: 0 });
 
@@ -111,7 +118,6 @@ export default function AdminUsuariosDinamico() {
     { num: '10', nombre: 'Octubre' }, { num: '11', nombre: 'Noviembre' }, { num: '12', nombre: 'Diciembre' }
   ];
 
-  // Cálculo seguro usando date-fns
   const calcularEdad = (fechaNacimiento: string | null) => {
     if (!fechaNacimiento) return 'N/A';
     try {
@@ -130,7 +136,6 @@ export default function AdminUsuariosDinamico() {
     }
   };
 
-  // Función amigable para el último acceso
   const renderUltimoAcceso = (fechaStr: string | null) => {
     if (!fechaStr) return <span className="text-gray-400 italic">Nunca</span>;
     try {
@@ -147,6 +152,19 @@ export default function AdminUsuariosDinamico() {
 
   const fetchData = async () => {
     setLoading(true);
+
+    // 1. Obtener al usuario activo
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    // 2. Comprobar todos sus roles
+    if (user) {
+      const { data: currentUserData } = await supabase.from('usuario_roles').select('roles(nombre)').eq('usuario_id', user.id);
+      
+      const rolesAsignados = currentUserData?.map((ur: any) => ur.roles?.nombre) || [];
+      setCurrentUserRole(rolesAsignados);
+    }
+
+    // 3. Cargar catálogos
     const [resRoles, resMun, resProy] = await Promise.all([
       supabase.from('roles').select('id, nombre').eq('activo', true),
       supabase.from('municipios').select('id, nombre').eq('activo', true),
@@ -157,12 +175,12 @@ export default function AdminUsuariosDinamico() {
     if (resMun.data) setMunicipios(resMun.data);
     if (resProy.data) setProyectos(resProy.data);
 
-    // Consulta principal agregando ultimo_acceso
+    // 4. Cargar lista de usuarios
     const { data: usuariosData, error: usrErr } = await supabase
       .from('usuarios')
       .select(`
         id, nombre, apellido, correo, telefono, fecha_nacimiento, activo, ultimo_acceso,
-        roles(id, nombre),
+        usuario_roles ( roles (id, nombre) ),
         embajadores(
           municipio_id, proyecto_social_id,
           municipios(nombre),
@@ -181,13 +199,24 @@ export default function AdminUsuariosDinamico() {
 
   const handleEdit = (u: Usuario) => {
     setEditId(u.id);
+    
+    // Extraer todos los IDs de los roles actuales del usuario
+    const rolesIdsActuales = u.usuario_roles?.map(ur => ur.roles.id) || [];
+    
+    // Comprobar si entre sus roles tiene el de Embajador
+    const esEmbajadorEditar = u.usuario_roles?.some(ur => ur.roles.nombre === ROL_EMBAJADOR) || false;
+
     setFormUsuario({
-      nombre: u.nombre || '', apellido: u.apellido || '', correo: u.correo || '',
-      telefono: u.telefono || '', fecha_nacimiento: u.fecha_nacimiento || '',
-      rol_id: u.roles?.id || 0, activo: u.activo, visible: true
+      nombre: u.nombre || '', 
+      apellido: u.apellido || '', 
+      correo: u.correo || '',
+      telefono: u.telefono || '', 
+      fecha_nacimiento: u.fecha_nacimiento || '',
+      roles_ids: rolesIdsActuales, 
+      activo: u.activo, 
+      visible: true
     });
 
-    const esEmbajadorEditar = u.roles?.nombre === ROL_EMBAJADOR;
     const emb = Array.isArray(u.embajadores) ? u.embajadores[0] : u.embajadores;
 
     if (esEmbajadorEditar && emb) {
@@ -226,7 +255,7 @@ export default function AdminUsuariosDinamico() {
       fetchData();
     } catch (error: any) {
       toast.error("No se pudo eliminar al usuario.", {
-        description: "Sugerencia: Intenta desactivarlo cambiando su estado desde 'Editar'.",
+        description: "El usuario tiene registros dependientes. Intenta desactivarlo cambiándolo a estado 'Baja'.",
       });
     } finally {
       setIsDeleting(false);
@@ -237,7 +266,7 @@ export default function AdminUsuariosDinamico() {
 
   const resetForm = () => {
     setEditId(null);
-    setFormUsuario({ nombre: '', apellido: '', correo: '', telefono: '', fecha_nacimiento: '', rol_id: 0, activo: true, visible: true });
+    setFormUsuario({ nombre: '', apellido: '', correo: '', telefono: '', fecha_nacimiento: '', roles_ids: [], activo: true, visible: true });
     setFormEmbajador({ municipio_id: 0 });
     setTieneProyecto(false);
     setCrearNuevoProyecto(false);
@@ -249,42 +278,72 @@ export default function AdminUsuariosDinamico() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  let usuariosFiltrados = usuariosList.filter(u => {
-    const nombreRol = u.roles?.nombre;
-    if (filtroRol !== 'Todos' && nombreRol !== filtroRol) return false;
-    if (filtroMunicipio !== 'Todos') {
-      const datosEmbajador = Array.isArray(u.embajadores) ? u.embajadores[0] : u.embajadores;
-      if (datosEmbajador?.municipios?.nombre !== filtroMunicipio) return false;
+  // ==========================================
+  // CAMBIO DE CONTRASEÑA FORZADO POR RPC
+  // ==========================================
+  const executeForcedPasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (nuevaPasswordForzada.length < 6) {
+      return toast.warning("La contraseña debe tener al menos 6 caracteres.");
     }
-    if (filtroMesCumple !== 'Todos') {
-      if (!u.fecha_nacimiento) return false;
-      const mes = u.fecha_nacimiento.split('-')[1];
-      if (mes !== filtroMesCumple) return false;
+
+    setIsChangingPassword(true);
+    try {
+      const { error } = await supabase.rpc('cambiar_password_forzado', {
+        p_usuario_id: modalPassword.userId,
+        p_nueva_password: nuevaPasswordForzada
+      });
+
+      if (error) throw error;
+
+      toast.success(`Contraseña de ${modalPassword.userName} actualizada exitosamente.`);
+      setModalPassword({ visible: false, userId: '', userName: '' });
+      setNuevaPasswordForzada('');
+    } catch (error: any) {
+      toast.error("Error al actualizar contraseña", { 
+        description: error.message || "Asegúrate de tener permisos de Programador." 
+      });
+    } finally {
+      setIsChangingPassword(false);
     }
-    return true;
-  });
-
-  usuariosFiltrados.sort((a, b) => getMesDia(a.fecha_nacimiento).localeCompare(getMesDia(b.fecha_nacimiento)));
-
-  const rolSeleccionado = roles.find(r => r.id === formUsuario.rol_id);
-  const esEmbajador = rolSeleccionado?.nombre === ROL_EMBAJADOR;
-
-  const mostrarColumnasEmbajador = filtroRol !== ROL_ADMIN;
+  };
 
   // ==========================================
-  // GUARDAR (CREAR EN AUTH + PERFIL)
+  // GUARDAR USUARIO EN BD Y TABLAS RELACIONALES
   // ==========================================
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formUsuario.rol_id === 0) return toast.error("Requerido", { description: "Selecciona un rol para el usuario." });
-    if (esEmbajador && formEmbajador.municipio_id === 0) return toast.error("Requerido", { description: "Selecciona un municipio para el embajador." });
+    
+    // Validación: Debe tener al menos un rol
+    if (formUsuario.roles_ids.length === 0) {
+      return toast.error("Requerido", { description: "Selecciona al menos un rol para el usuario." });
+    }
+    
+    // Comprobar si entre los roles seleccionados está el de Embajador
+    const rolesSeleccionadosNombres = roles.filter(r => formUsuario.roles_ids.includes(r.id)).map(r => r.nombre);
+    const incluyeRolEmbajador = rolesSeleccionadosNombres.includes(ROL_EMBAJADOR);
+
+    if (incluyeRolEmbajador && formEmbajador.municipio_id === 0) {
+      return toast.error("Requerido", { description: "Selecciona un municipio para el embajador." });
+    }
 
     setIsSaving(true);
     try {
       let usuarioId = editId;
 
+      const payloadUsuarioInfo = {
+        nombre: formUsuario.nombre,
+        apellido: formUsuario.apellido,
+        correo: formUsuario.correo,
+        telefono: formUsuario.telefono,
+        fecha_nacimiento: formUsuario.fecha_nacimiento,
+        activo: formUsuario.activo,
+        visible: formUsuario.visible
+      };
+
       if (editId) {
-        const { error: errUpdate } = await supabase.from('usuarios').update(formUsuario).eq('id', editId);
+        const { error: errUpdate } = await supabase.from('usuarios').update(payloadUsuarioInfo).eq('id', editId);
         if (errUpdate) throw errUpdate;
       } else {
         const authClient = createClient(supabaseUrl, supabaseKey, {
@@ -299,10 +358,10 @@ export default function AdminUsuariosDinamico() {
         if (authErr) throw authErr;
         
         const newUserId = authData.user?.id;
-        if (!newUserId) throw new Error("No se pudo crear la credencial de acceso. Verifica que el correo no esté ya registrado.");
+        if (!newUserId) throw new Error("No se pudo crear la credencial de acceso.");
 
         const payloadNuevoUsuario = { 
-          ...formUsuario, 
+          ...payloadUsuarioInfo, 
           id: newUserId,
           requiere_cambio_password: true 
         };
@@ -313,7 +372,19 @@ export default function AdminUsuariosDinamico() {
         usuarioId = newUserId;
       }
 
-      if (esEmbajador && usuarioId) {
+      if (!usuarioId) throw new Error("ID de usuario no encontrado.");
+
+      // ACTUALIZAR MÚLTIPLES ROLES EN LA TABLA usuario_roles
+      await supabase.from('usuario_roles').delete().eq('usuario_id', usuarioId);
+      const rolesAInsertar = formUsuario.roles_ids.map(rolId => ({
+        usuario_id: usuarioId,
+        rol_id: rolId
+      }));
+      const { error: roleErr } = await supabase.from('usuario_roles').insert(rolesAInsertar);
+      if (roleErr) throw roleErr;
+
+      // GUARDAR DATOS DE EMBAJADOR (Si aplica)
+      if (incluyeRolEmbajador) {
         let proyectoFinalId = null;
         
         if (tieneProyecto) {
@@ -326,7 +397,7 @@ export default function AdminUsuariosDinamico() {
               const uniqueFileName = typeof crypto !== 'undefined' && crypto.randomUUID 
                                      ? crypto.randomUUID() 
                                      : Date.now().toString(36) + Math.random().toString(36).substring(2);
-              const fileName = `logo_${uniqueFileName}.${fileExt}`;
+              const fileName = `logos/logo_${uniqueFileName}.${fileExt}`;
               
               const { error: uploadError } = await supabase.storage.from('imagenes').upload(fileName, logoFile);
               if (uploadError) throw uploadError;
@@ -356,6 +427,8 @@ export default function AdminUsuariosDinamico() {
         }, { onConflict: 'usuario_id' });
 
         if (errEmbajador) throw errEmbajador;
+      } else {
+        await supabase.from('embajadores').delete().eq('usuario_id', usuarioId);
       }
 
       toast.success(editId ? 'Registro actualizado con éxito' : 'Usuario guardado exitosamente', {
@@ -372,6 +445,36 @@ export default function AdminUsuariosDinamico() {
     }
   };
 
+  // Variables de UI
+  const rolesSeleccionadosNombres = roles.filter(r => formUsuario.roles_ids.includes(r.id)).map(r => r.nombre);
+  const incluyeRolEmbajador = rolesSeleccionadosNombres.includes(ROL_EMBAJADOR);
+  const mostrarColumnasEmbajador = filtroRol !== ROL_ADMIN;
+  
+  // MODIFICACIÓN CLAVE: Buscamos dentro del arreglo de roles
+  const puedeCambiarPasswords = currentUserRole.includes(ROL_PROGRAMADOR);
+
+  // Filtrado de usuarios compatible con la estructura de múltiples roles
+  let usuariosFiltrados = usuariosList.filter(u => {
+    const tieneRolBuscado = filtroRol === 'Todos' 
+      ? true 
+      : u.usuario_roles?.some(ur => ur.roles.nombre === filtroRol);
+    
+    if (!tieneRolBuscado) return false;
+
+    if (filtroMunicipio !== 'Todos') {
+      const datosEmbajador = Array.isArray(u.embajadores) ? u.embajadores[0] : u.embajadores;
+      if (datosEmbajador?.municipios?.nombre !== filtroMunicipio) return false;
+    }
+    if (filtroMesCumple !== 'Todos') {
+      if (!u.fecha_nacimiento) return false;
+      const mes = u.fecha_nacimiento.split('-')[1];
+      if (mes !== filtroMesCumple) return false;
+    }
+    return true;
+  });
+
+  usuariosFiltrados.sort((a, b) => getMesDia(a.fecha_nacimiento).localeCompare(getMesDia(b.fecha_nacimiento)));
+
   if (loading) return (
     <div className="flex flex-col items-center justify-center py-20 text-gray-500">
       <Loader2 className="animate-spin mb-4" size={40} />
@@ -382,6 +485,41 @@ export default function AdminUsuariosDinamico() {
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-12">
       
+      {/* MODAL CAMBIO CONTRASEÑA (Solo Programador) */}
+      {modalPassword.visible && (
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-2 flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+              <h3 className="font-black text-lg text-gray-800 flex items-center gap-2"><Key size={20} className="text-[#00689D]"/> Forzar Contraseña</h3>
+              <button onClick={() => setModalPassword({ visible: false, userId: '', userName: '' })} className="p-1 hover:bg-gray-200 rounded-full text-gray-500"><X size={20} /></button>
+            </div>
+            
+            <form onSubmit={executeForcedPasswordChange} className="p-6 space-y-4">
+              <p className="text-sm text-gray-600 mb-4">
+                Estás cambiando directamente la contraseña de acceso de <strong>{modalPassword.userName}</strong>. Esta acción es exclusiva del rol Programador.
+              </p>
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1">Nueva Contraseña <span className="text-red-500">*</span></label>
+                <input 
+                  type="text" required minLength={6} autoFocus
+                  value={nuevaPasswordForzada} onChange={(e) => setNuevaPasswordForzada(e.target.value)}
+                  className="w-full border border-gray-300 rounded-xl p-2.5 text-sm outline-none focus:border-[#00689D] focus:ring-1 focus:ring-[#00689D]" 
+                  placeholder="Escribe la nueva contraseña..."
+                />
+              </div>
+
+              <div className="flex flex-col-reverse sm:flex-row gap-3 pt-4">
+                <button type="button" onClick={() => setModalPassword({ visible: false, userId: '', userName: '' })} className="flex-1 py-2.5 rounded-xl font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-100">Cancelar</button>
+                <button type="submit" disabled={isChangingPassword} className="flex-1 flex justify-center items-center gap-2 py-2.5 rounded-xl font-bold text-white bg-[#00689D] hover:bg-[#00527A] disabled:opacity-70 shadow-md">
+                  {isChangingPassword ? <Loader2 className="animate-spin" size={16} /> : null}
+                  Aplicar Cambio
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* CABECERA */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-6 rounded-xl shadow-sm border border-gray-200 gap-4">
         <div>
@@ -411,7 +549,6 @@ export default function AdminUsuariosDinamico() {
           </div>
           
           <form onSubmit={handleSubmit} className="space-y-8">
-            {/* SECCIÓN 1: DATOS PERSONALES */}
             <div className="bg-gray-50/50 p-6 rounded-xl border border-gray-200">
               <h3 className="text-lg font-bold mb-6 text-[#00689D] flex items-center gap-2">
                 <Users size={20}/> 1. Datos Personales y Acceso
@@ -426,49 +563,61 @@ export default function AdminUsuariosDinamico() {
                   <input type="text" required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none transition-all" value={formUsuario.apellido} onChange={e => setFormUsuario({...formUsuario, apellido: e.target.value})} placeholder="Ej. Pérez" />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1 flex items-center gap-1"><Mail size={16}/> Correo Electrónico (Para Iniciar Sesión)</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1 flex items-center gap-1"><Mail size={16}/> Correo Electrónico</label>
                   <input type="email" required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none transition-all" value={formUsuario.correo} onChange={e => setFormUsuario({...formUsuario, correo: e.target.value})} placeholder="correo@ejemplo.com" />
                 </div>
                 
                 {!editId ? (
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-1 flex items-center gap-1"><Lock size={16}/> Contraseña Generada</label>
-                    <input 
-                      type="text" 
-                      disabled 
-                      className="w-full p-3 border border-gray-200 rounded-lg bg-gray-200 text-gray-600 font-mono font-bold cursor-not-allowed select-all" 
-                      value={PASSWORD_TEMPORAL_DEFAULT} 
-                    />
-                    <p className="text-xs text-[#00689D] font-medium mt-1">El usuario deberá cambiarla obligatoriamente al iniciar sesión por primera vez.</p>
+                    <input type="text" disabled className="w-full p-3 border border-gray-200 rounded-lg bg-gray-200 text-gray-600 font-mono font-bold cursor-not-allowed select-all" value={PASSWORD_TEMPORAL_DEFAULT} />
+                    <p className="text-xs text-[#00689D] font-medium mt-1">El usuario deberá cambiarla obligatoriamente al iniciar sesión.</p>
                   </div>
                 ) : (
                   <div>
                     <label className="block text-sm font-bold text-gray-400 mb-1 flex items-center gap-1"><Lock size={16}/> Contraseña</label>
                     <input type="text" disabled className="w-full p-3 border border-gray-200 bg-gray-100 rounded-lg text-gray-500 cursor-not-allowed" value="••••••••" />
-                    <p className="text-xs text-gray-400 mt-1">La contraseña solo puede cambiarla el propio usuario.</p>
+                    <p className="text-xs text-gray-400 mt-1">Usa el botón de llave en la tabla principal para forzar una nueva contraseña.</p>
                   </div>
                 )}
 
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1 flex items-center gap-1"><Phone size={16}/> Teléfono</label>
-                  <input type="tel" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none transition-all" value={formUsuario.telefono} onChange={e => setFormUsuario({...formUsuario, telefono: e.target.value})} placeholder="10 dígitos" />
+                  <input type="tel" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none transition-all" value={formUsuario.telefono || ''} onChange={e => setFormUsuario({...formUsuario, telefono: e.target.value})} placeholder="10 dígitos" />
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1 flex items-center gap-1"><Calendar size={16}/> Fecha de Nacimiento</label>
-                  <input type="date" required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none transition-all" value={formUsuario.fecha_nacimiento} onChange={e => setFormUsuario({...formUsuario, fecha_nacimiento: e.target.value})} />
+                  <input type="date" required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none transition-all" value={formUsuario.fecha_nacimiento || ''} onChange={e => setFormUsuario({...formUsuario, fecha_nacimiento: e.target.value})} />
                 </div>
+                
                 <div className="md:col-span-2 border-t border-gray-200 mt-2 pt-4">
-                  <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-1"><Shield size={16}/> Asignar Rol en la Plataforma</label>
-                  <select required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none transition-all bg-white" value={formUsuario.rol_id} onChange={e => setFormUsuario({...formUsuario, rol_id: Number(e.target.value)})}>
-                    <option value="0">-- Selecciona un Rol --</option>
-                    {roles.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-                  </select>
+                  <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-1">
+                    <Shield size={16}/> Asignar Roles
+                  </label>
+                  <div className="flex flex-wrap gap-4 mt-2">
+                    {roles.map(r => (
+                      <label key={r.id} className="flex items-center gap-2 cursor-pointer bg-white border border-gray-300 px-4 py-2.5 rounded-lg hover:bg-blue-50 transition-colors shadow-sm">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 text-[#00689D] rounded border-gray-300 focus:ring-[#00689D]"
+                          checked={formUsuario.roles_ids.includes(r.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setFormUsuario({ ...formUsuario, roles_ids: [...formUsuario.roles_ids, r.id] });
+                            } else {
+                              setFormUsuario({ ...formUsuario, roles_ids: formUsuario.roles_ids.filter(id => id !== r.id) });
+                            }
+                          }}
+                        />
+                        <span className="text-sm font-semibold text-gray-700">{r.nombre}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* SECCIÓN 2: PERFIL DE EMBAJADOR */}
-            {esEmbajador && (
+            {incluyeRolEmbajador && (
               <div className="bg-blue-50/50 p-6 rounded-xl border border-blue-200 animate-in fade-in slide-in-from-bottom-4">
                 <h3 className="text-lg font-bold mb-6 text-[#00689D] flex items-center gap-2">
                   <MapPin size={20}/> 2. Perfil de Embajador
@@ -481,7 +630,6 @@ export default function AdminUsuariosDinamico() {
                   </select>
                 </div>
 
-                {/* SECCIÓN 3: PROYECTO SOCIAL */}
                 <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
                   <label className="flex items-center space-x-3 cursor-pointer mb-5">
                     <input type="checkbox" className="w-5 h-5 text-[#00689D] border-gray-300 rounded focus:ring-[#00689D]" checked={tieneProyecto} onChange={e => setTieneProyecto(e.target.checked)} />
@@ -511,7 +659,7 @@ export default function AdminUsuariosDinamico() {
                             <textarea className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none resize-none" rows={3} value={formProyecto.descripcion} onChange={e => setFormProyecto({...formProyecto, descripcion: e.target.value})} placeholder="Breve descripción del proyecto..."></textarea>
                           </div>
                           <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Logotipo del Proyecto</label>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Logotipo</label>
                             <div 
                               onDragOver={(e) => e.preventDefault()} 
                               onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files?.[0]) processLogo(e.dataTransfer.files[0]); }} 
@@ -522,15 +670,11 @@ export default function AdminUsuariosDinamico() {
                               {logoPreview ? (
                                 <div className="relative flex flex-col items-center">
                                   <img src={logoPreview} alt="Preview" className="h-24 object-contain rounded-md shadow-sm" />
-                                  <p className="text-xs text-center mt-2 text-green-600 font-bold opacity-0 group-hover:opacity-100 transition-opacity">Clic para cambiar</p>
                                 </div>
                               ) : (
                                 <div className="text-center flex flex-col items-center">
-                                  <div className="bg-gray-100 p-3 rounded-full text-gray-400 group-hover:bg-green-500 group-hover:text-white transition-colors mb-2">
-                                    <UploadCloud size={24} />
-                                  </div>
-                                  <p className="text-sm text-gray-700 font-semibold">Arrastra el logo aquí</p>
-                                  <p className="text-xs text-gray-400">PNG o JPG</p>
+                                  <UploadCloud size={24} className="text-gray-400 mb-2"/>
+                                  <p className="text-sm text-gray-700 font-semibold">Arrastra o haz clic</p>
                                 </div>
                               )}
                             </div>
@@ -555,12 +699,10 @@ export default function AdminUsuariosDinamico() {
         </div>
       )}
 
-      {/* ==========================================
-          BARRA DE FILTROS 
-      ========================================== */}
+      {/* BARRA DE FILTROS */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
         <div className="flex space-x-2 mb-6 border-b border-gray-100 pb-5 overflow-x-auto scrollbar-hide">
-          <button onClick={() => setFiltroRol('Todos')} className={`px-5 py-2.5 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${filtroRol === 'Todos' ? 'bg-[#00689D] text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Todos los Usuarios</button>
+          <button onClick={() => setFiltroRol('Todos')} className={`px-5 py-2.5 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${filtroRol === 'Todos' ? 'bg-[#00689D] text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Todos</button>
           <button onClick={() => setFiltroRol(ROL_ADMIN)} className={`px-5 py-2.5 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${filtroRol === ROL_ADMIN ? 'bg-purple-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Administradores</button>
           <button onClick={() => setFiltroRol(ROL_EMBAJADOR)} className={`px-5 py-2.5 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${filtroRol === ROL_EMBAJADOR ? 'bg-green-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Embajadores</button>
         </div>
@@ -569,9 +711,7 @@ export default function AdminUsuariosDinamico() {
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Filtrar Municipio</label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <MapPin size={16} className="text-gray-400" />
-              </div>
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><MapPin size={16} className="text-gray-400" /></div>
               <select className="w-full pl-9 p-3 border border-gray-300 rounded-lg bg-gray-50 focus:bg-white focus:ring-2 focus:ring-[#00689D] outline-none appearance-none disabled:opacity-50 transition-colors" value={filtroMunicipio} onChange={e => setFiltroMunicipio(e.target.value)} disabled={filtroRol === ROL_ADMIN}>
                 <option value="Todos">Cualquier Municipio</option>
                 {municipios.map(m => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
@@ -581,9 +721,7 @@ export default function AdminUsuariosDinamico() {
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Mes de Cumpleaños</label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Calendar size={16} className="text-gray-400" />
-              </div>
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Calendar size={16} className="text-gray-400" /></div>
               <select className="w-full pl-9 p-3 border border-gray-300 rounded-lg bg-gray-50 focus:bg-white focus:ring-2 focus:ring-[#00689D] outline-none appearance-none transition-colors" value={filtroMesCumple} onChange={e => setFiltroMesCumple(e.target.value)}>
                 <option value="Todos">Cualquier mes</option>
                 {meses.map(m => <option key={m.num} value={m.num}>{m.nombre}</option>)}
@@ -598,9 +736,7 @@ export default function AdminUsuariosDinamico() {
         </div>
       </div>
 
-      {/* ==========================================
-          TABLA 
-      ========================================== */}
+      {/* TABLA DE USUARIOS */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center">
           <h3 className="font-bold text-gray-700 text-sm md:text-base">Resultados de búsqueda</h3>
@@ -615,18 +751,12 @@ export default function AdminUsuariosDinamico() {
               <tr className="bg-white text-gray-500 border-b border-gray-200 text-xs uppercase tracking-wider">
                 <th className="p-4 font-bold text-center w-12">#</th>
                 <th className="p-4 font-bold whitespace-nowrap">Nombre Completo</th>
-                
-                {/* NUEVA COLUMNA: ÚLTIMA CONEXIÓN */}
-                
-                
                 <th className="p-4 font-bold text-center">Edad</th>
                 <th className="p-4 font-bold whitespace-nowrap">Fecha Nac.</th>
                 <th className="p-4 font-bold">Contacto</th>
-                <th className="p-4 font-bold">Rol</th>
-                
+                <th className="p-4 font-bold">Roles</th>
                 {mostrarColumnasEmbajador && <th className="p-4 font-bold">Municipio / Proyecto</th>}
                 {mostrarColumnasEmbajador && <th className="p-4 font-bold text-center">Actividades</th>}
-                
                 <th className="p-4 font-bold text-center">Estado</th>
                 <th className="p-4 font-bold text-center whitespace-nowrap">Última Conexión</th>
                 <th className="p-4 font-bold text-center">Acciones</th>
@@ -638,12 +768,11 @@ export default function AdminUsuariosDinamico() {
                   <td colSpan={mostrarColumnasEmbajador ? 11 : 9} className="p-12 text-center text-gray-500">
                     <Users className="mx-auto h-12 w-12 text-gray-300 mb-3" />
                     <p className="font-medium text-lg">No se encontraron usuarios</p>
-                    <p className="text-sm">Intenta ajustar los filtros de búsqueda.</p>
                   </td>
                 </tr>
               ) : (
                 usuariosFiltrados.map((u, index) => {
-                  const esRolEmbajador = u.roles?.nombre === ROL_EMBAJADOR;
+                  const tieneRolEmbajador = u.usuario_roles?.some(ur => ur.roles.nombre === ROL_EMBAJADOR);
                   const datosEmbajador = Array.isArray(u.embajadores) ? u.embajadores[0] : u.embajadores;
                   const cantActividades = u.actividades ? u.actividades.length : 0;
                   const edadCalculada = calcularEdad(u.fecha_nacimiento);
@@ -654,9 +783,6 @@ export default function AdminUsuariosDinamico() {
                       <td className="p-4">
                         <div className="font-bold text-gray-900 whitespace-nowrap">{u.nombre} {u.apellido}</div>
                       </td>
-                      
-                     
-
                       <td className="p-4 text-center">
                         <span className="bg-gray-100 text-gray-700 px-2.5 py-1 rounded-md font-bold text-xs">
                           {edadCalculada !== 'N/A' ? `${edadCalculada}` : '-'}
@@ -670,16 +796,27 @@ export default function AdminUsuariosDinamico() {
                       </td>
 
                       <td className="p-4">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold border ${
-                          esRolEmbajador ? 'bg-green-50 text-green-700 border-green-200' : 'bg-purple-50 text-purple-700 border-purple-200'
-                        }`}>
-                          {u.roles?.nombre || 'Sin rol'}
-                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {u.usuario_roles && u.usuario_roles.length > 0 ? (
+                            u.usuario_roles.map((ur, i) => (
+                              <span key={i} className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                ur.roles.nombre === ROL_EMBAJADOR ? 'bg-green-50 text-green-700 border-green-200' :
+                                ur.roles.nombre === ROL_ADMIN ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                                ur.roles.nombre === ROL_PROGRAMADOR ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                'bg-gray-50 text-gray-700 border-gray-200'
+                              }`}>
+                                {ur.roles.nombre}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-gray-400 text-xs">Sin rol</span>
+                          )}
+                        </div>
                       </td>
 
                       {mostrarColumnasEmbajador && (
                         <td className="p-4">
-                          {esRolEmbajador ? (
+                          {tieneRolEmbajador ? (
                             <div className="flex flex-col">
                               <span className="text-xs font-bold text-gray-700 flex items-center gap-1"><MapPin size={12}/> {datosEmbajador?.municipios?.nombre || 'Sin Asignar'}</span>
                               <span className="text-xs text-[#00689D] font-medium truncate max-w-[150px] mt-0.5 flex items-center gap-1"><Folder size={12}/> {datosEmbajador?.proyectos_sociales?.nombre || 'Sin Proyecto'}</span>
@@ -690,7 +827,7 @@ export default function AdminUsuariosDinamico() {
 
                       {mostrarColumnasEmbajador && (
                         <td className="p-4 text-center">
-                          {esRolEmbajador ? <span className="font-bold text-gray-700">{cantActividades}</span> : <span className="text-gray-300">-</span>}
+                          {tieneRolEmbajador ? <span className="font-bold text-gray-700">{cantActividades}</span> : <span className="text-gray-300">-</span>}
                         </td>
                       )}
                       
@@ -698,7 +835,7 @@ export default function AdminUsuariosDinamico() {
                         <span className={`inline-flex items-center w-2.5 h-2.5 rounded-full mr-1.5 ${u.activo ? 'bg-green-500' : 'bg-red-500'}`}></span>
                         <span className="text-xs font-medium text-gray-700">{u.activo ? 'Activo' : 'Baja'}</span>
                       </td>
-                       {/* CELDA: ÚLTIMA CONEXIÓN */}
+                      
                       <td className="p-4 text-center">
                         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#00689D] bg-[#00689D]/10 px-2.5 py-1 rounded-md border border-[#00689D]/20 whitespace-nowrap">
                           <Clock size={12} />
@@ -707,7 +844,16 @@ export default function AdminUsuariosDinamico() {
                       </td>
                       
                       <td className="p-4">
-                        <div className="flex items-center justify-center gap-2">
+                        <div className="flex items-center justify-center gap-1">
+                          {puedeCambiarPasswords && (
+                            <button 
+                              onClick={() => setModalPassword({ visible: true, userId: u.id, userName: `${u.nombre} ${u.apellido}` })} 
+                              className="text-amber-500 hover:bg-amber-50 p-2 rounded-md transition-colors" 
+                              title="Forzar Contraseña"
+                            >
+                              <Key size={16} />
+                            </button>
+                          )}
                           <button onClick={() => handleEdit(u)} className="text-[#00689D] hover:bg-blue-50 p-2 rounded-md transition-colors" title="Editar">
                             <Edit2 size={16} />
                           </button>
@@ -725,9 +871,6 @@ export default function AdminUsuariosDinamico() {
         </div>
       </div>
 
-      {/* ==========================================
-          MODAL DE CONFIRMACIÓN DE ELIMINACIÓN
-      ========================================== */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -748,7 +891,6 @@ export default function AdminUsuariosDinamico() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
     </div>
   );
 }

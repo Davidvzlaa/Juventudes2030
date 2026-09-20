@@ -24,7 +24,6 @@ const TABS: { id: TabType; label: string; icon: any }[] = [
   { id: 'sistemas', label: 'Programa', icon: Settings },
 ];
 
-// Función auxiliar para emitir notificaciones con Sonner y sonido
 const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
   const audio = new Audio('/notification.mp3');
   audio.volume = 0.5;
@@ -33,17 +32,10 @@ const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | '
   const options = { position: 'bottom-right' as const };
 
   switch (type) {
-    case 'success':
-      toast.success(message, options);
-      break;
-    case 'error':
-      toast.error(message, options);
-      break;
-    case 'warning':
-      toast.warning(message, options);
-      break;
-    default:
-      toast.info(message, options);
+    case 'success': toast.success(message, options); break;
+    case 'error': toast.error(message, options); break;
+    case 'warning': toast.warning(message, options); break;
+    default: toast.info(message, options);
   }
 };
 
@@ -65,6 +57,9 @@ export default function AdminCatalogos() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
+  // ESTADO NUEVO: Controlar sub-pestaña para Beneficiarios
+  const [benefView, setBenefView] = useState<'categorias' | 'sectores'>('categorias');
+
   // Estados específicos para la sección de Permisos
   const [permisosList, setPermisosList] = useState<any[]>([]);
   const [rolesParaPermisos, setRolesParaPermisos] = useState<any[]>([]);
@@ -80,7 +75,6 @@ export default function AdminCatalogos() {
   }>({ isOpen: false, idAEliminar: null });
   const [isProcessingAction, setIsProcessingAction] = useState(false);
 
-  // Prevenir scroll cuando el modal está abierto
   useEffect(() => {
     if (dialogoConfirmacion.isOpen) {
       document.body.style.overflow = 'hidden';
@@ -109,18 +103,25 @@ export default function AdminCatalogos() {
       ]);
       if (resPermisos.data) {
         setPermisosList(resPermisos.data);
-        setItems(resPermisos.data); // Usamos items también para la tabla inferior
+        setItems(resPermisos.data); 
       }
       if (resRoles.data) setRolesParaPermisos(resRoles.data);
       if (resRolPerm.data) setRolPermisosActivos(resRolPerm.data);
     } else {
       let query;
+      let targetTable = activeTab as string;
+
+      // Detectar si estamos en Beneficiarios -> Sectores
+      if (activeTab === 'categorias_beneficiarios' && benefView === 'sectores') {
+        targetTable = 'sectores_poblacion';
+      }
+
       if (activeTab === 'proyectos') {
         query = supabase.from('proyectos_sociales').select('*, embajadores(usuarios(nombre, apellido))').order('id', { ascending: true });
       } else if (activeTab === 'ods') {
         query = supabase.from('ods').select('*').order('numero', { ascending: true });
       } else {
-        query = supabase.from(activeTab as TabType).select('*').order('id', { ascending: true });
+        query = supabase.from(targetTable).select('*').order('id', { ascending: true });
       }
 
       const { data, error } = await query;
@@ -130,16 +131,17 @@ export default function AdminCatalogos() {
     setLoading(false);
   };
 
+  // Se añade benefView a las dependencias para que recargue al cambiar de sub-pestaña
   useEffect(() => {
     if (!activeTab) return;
     fetchData();
     resetForm();
-  }, [activeTab]);
+  }, [activeTab, benefView]);
 
   if (!activeTab) return <Navigate to="/administrador/configuracion/municipios" replace />;
 
   // ==========================================
-  // LÓGICA ESPECÍFICA DE PERMISOS
+  // LÓGICA DE PERMISOS
   // ==========================================
   const handleTogglePermiso = async (rolId: number, permisoId: number, currentStatus: boolean) => {
     try {
@@ -184,7 +186,7 @@ export default function AdminCatalogos() {
   };
 
   // ==========================================
-  // LÓGICA GENERAL DE CATÁLOGOS (EXCEPTO PERMISOS)
+  // LÓGICA GENERAL DE CATÁLOGOS
   // ==========================================
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) processFile(e.target.files[0]);
@@ -234,7 +236,11 @@ export default function AdminCatalogos() {
       payload.logo = finalImageUrl; 
     }
 
-    const tableName = activeTab === 'proyectos' ? 'proyectos_sociales' : activeTab;
+    // Configurar tabla destino considerando los sub-tabs
+    let tableName = activeTab === 'proyectos' ? 'proyectos_sociales' : activeTab as string;
+    if (activeTab === 'categorias_beneficiarios' && benefView === 'sectores') {
+      tableName = 'sectores_poblacion';
+    }
 
     try {
       if (editId) {
@@ -262,8 +268,12 @@ export default function AdminCatalogos() {
     setIsProcessingAction(true);
     
     try {
-      const tableName = activeTab === 'proyectos' ? 'proyectos_sociales' : (activeTab === 'permisos' ? 'permisos' : activeTab);
-      const { error } = await supabase.from(tableName as string).delete().eq('id', dialogoConfirmacion.idAEliminar);
+      let tableName = activeTab === 'proyectos' ? 'proyectos_sociales' : (activeTab === 'permisos' ? 'permisos' : activeTab as string);
+      if (activeTab === 'categorias_beneficiarios' && benefView === 'sectores') {
+        tableName = 'sectores_poblacion';
+      }
+
+      const { error } = await supabase.from(tableName).delete().eq('id', dialogoConfirmacion.idAEliminar);
       
       if (error) {
         notifyWithSound("Error al eliminar. Puede que el registro esté en uso. Sugerencia: Presiona 'Editar' y desmarca la casilla 'Activo'.", "error");
@@ -299,6 +309,14 @@ export default function AdminCatalogos() {
     setImageFile(null); setImagePreview(null);
   };
 
+  // Helper para títulos dinámicos
+  const getTabTitle = () => {
+    if (activeTab === 'categorias_beneficiarios') {
+      return benefView === 'categorias' ? 'Categorías (Edades y Género)' : 'Sectores (Grupos Vulnerables)';
+    }
+    return activeTab.replace('_', ' ');
+  };
+
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-12">
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -315,7 +333,6 @@ export default function AdminCatalogos() {
           activeTab === 'permisos' ? (
             <div className="animate-in fade-in duration-300 space-y-8">
               
-              {/* Encabezado y Botón para habilitar formulario de creación */}
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50 p-6 rounded-xl border border-gray-200">
                 <div>
                   <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -337,7 +354,6 @@ export default function AdminCatalogos() {
                 </button>
               </div>
 
-              {/* Formulario desplegable para Crear/Editar Permiso */}
               {mostrarFormPermiso && (
                 <form onSubmit={handleSavePermiso} className="p-6 bg-blue-50/40 rounded-xl border border-blue-100 shadow-sm animate-in fade-in slide-in-from-top-2">
                   <h3 className="text-base font-bold text-gray-800 mb-4 flex items-center gap-2">
@@ -384,7 +400,6 @@ export default function AdminCatalogos() {
                 </form>
               )}
 
-              {/* Matriz Interactiva de Checkboxes */}
               <div>
                 <h3 className="text-base font-bold text-gray-800 mb-3">Matriz de Asignación por Roles</h3>
                 {loading ? (
@@ -431,7 +446,6 @@ export default function AdminCatalogos() {
                 )}
               </div>
 
-              {/* Lista inferior con los permisos creados para administrarlos */}
               <div>
                 <h3 className="text-base font-bold text-gray-800 mb-3">Listado General de Permisos</h3>
                 <div className="overflow-hidden border border-gray-200 rounded-xl shadow-sm">
@@ -478,14 +492,32 @@ export default function AdminCatalogos() {
             /* VISTA: CATÁLOGOS NORMALES (Municipios, Roles, ODS, etc.) */
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
               
+              {/* SUB-TABS PARA BENEFICIARIOS Y SECTORES */}
+              {activeTab === 'categorias_beneficiarios' && (
+                <div className="flex flex-wrap gap-2 mb-6 p-1.5 bg-gray-100/80 rounded-xl inline-flex shadow-inner">
+                  <button 
+                    onClick={() => setBenefView('categorias')}
+                    className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${benefView === 'categorias' ? 'bg-white shadow-sm text-[#00689D]' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50'}`}
+                  >
+                    1. Categorías de Beneficiarios
+                  </button>
+                  <button 
+                    onClick={() => setBenefView('sectores')}
+                    className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${benefView === 'sectores' ? 'bg-white shadow-sm text-[#00689D]' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50'}`}
+                  >
+                    2. Sectores Vulnerables
+                  </button>
+                </div>
+              )}
+
               {/* FORMULARIO */}
               <form onSubmit={handleSubmit} className="mb-10 p-6 bg-gray-50 rounded-xl border border-gray-200 shadow-sm relative overflow-hidden">
                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#00689D]"></div>
                 
                 <div className="flex items-center justify-between mb-6 border-b border-gray-200 pb-4">
-                  <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 capitalize">
                     {editId ? <Edit2 className="text-blue-500" size={20}/> : <PlusCircle className="text-green-500" size={20}/>}
-                    {editId ? `Editar registro en ${activeTab.replace('_', ' ')}` : `Nuevo registro en ${activeTab.replace('_', ' ')}`}
+                    {editId ? `Editar registro de ${getTabTitle()}` : `Añadir nuevo a ${getTabTitle()}`}
                   </h2>
                 </div>
                 
@@ -512,7 +544,7 @@ export default function AdminCatalogos() {
                   )}
 
                   <div className={activeTab === 'ods' ? 'md:col-span-2' : 'md:col-span-2'}>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">Nombre / Registro</label>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Nombre / Etiqueta</label>
                     <input type="text" required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#00689D] outline-none transition-all"
                       placeholder={`Ej. Nombre...`}
                       value={formData.nombre} onChange={e => setFormData({...formData, nombre: e.target.value})} />

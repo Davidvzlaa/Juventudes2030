@@ -150,6 +150,7 @@ import EmbajaDashboard from './pages/Embajadores/EmbajaDashboard';
 // import EmbajaActividad from './pages/Embajadores/EmbajaActividad';
 import EmbajaReporte from './pages/Embajadores/EmbajaReporte';
 import EmbajaCalendario from './pages/Embajadores/EmbajaCalendario';
+import PerfilUsuario from './pages/PerfilUsuario';
 import ResultadosSeleccion from './pages/ResultadosSeleccion';
 // ==========================================
 // UI COMPONENTES
@@ -183,6 +184,7 @@ export default function App() {
               <Route path="usuarios" element={<AdminUsuariosDinamico />} />
               <Route path="reportes" element={<AdminReportes />} />
               <Route path="calendario" element={<AdminCalendario />} />
+              <Route path="perfil" element={<PerfilUsuario />} />
               {/* <Route path="actividades" element={<AdminActividades />} /> */}
             </Route>
 
@@ -207,6 +209,7 @@ export default function App() {
               {/* <Route path="actividades" element={<EmbajaActividad />} /> */}
               <Route path="calendario" element={<EmbajaCalendario />} />
               <Route path="reportes" element={<EmbajaReporte />} />
+              <Route path="perfil" element={<PerfilUsuario />} />
             </Route>
           </Route>
 

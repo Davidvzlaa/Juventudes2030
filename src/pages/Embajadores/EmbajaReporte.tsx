@@ -20,14 +20,61 @@ import {
 
 import { supabase } from '../../lib/supabase'; 
 
-type EstadoReporte = 'Sin empezar' | 'Borrador' | 'Enviado' | 'Regresado';
+// --- INTERFACES ESTRICTAS ---
+type EstadoReporte = 'Sin empezar' | 'Borrador' | 'Enviado' | 'Regresado' | 'Aprobado';
+
+interface Reporte {
+  id: number;
+  mes: number;
+  anio: number;
+  estado: EstadoReporte;
+  periodo_inicio: string;
+  periodo_fin: string;
+  nombre_mes?: string;
+}
+
+interface Catalogo {
+  id: number;
+  nombre: string;
+  numero?: number;
+  categoria_sostenibilidad?: string;
+}
+
+interface Evidencia {
+  id: number | string;
+  url: string;
+  file?: File;
+  path_interno?: string;
+}
+
+interface ActividadFormulario {
+  id?: string | number;
+  es_propia: boolean;
+  nombre: string;
+  tipo_actividad: string;
+  fecha_evento: string;
+  hora_inicio: string;
+  hora_fin: string;
+  ods_seleccionados: number[];
+  lugar: string;
+  domicilio: { municipio: string | number; colonia: string; calle: string };
+  beneficiarios: Record<number, { hombres: string; mujeres: string; total?: string }>;
+  sectores: Record<number, { hombres: string; mujeres: string; total?: string }>;
+  rango_edad: string;
+  descripcion: string;
+  evidencias: Evidencia[];
+  es_colaborativa: boolean;
+  colaborador_id: string;
+  es_externa: boolean;
+  organizador_externo: string;
+}
 
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
   const audio = new Audio('/notification.mp3');
   audio.volume = 0.5;
-  audio.play().catch(err => console.log('Audio bloqueado por el navegador:', err));
+  audio.play().catch(err => console.warn('Reproducción de audio bloqueada:', err));
 
   const options = { position: 'bottom-right' as const };
 
@@ -47,37 +94,38 @@ const formatearFechaVisual = (fechaStr: string) => {
 };
 
 export default function EmbajaReporte() {
-  const [reportes, setReportes] = useState<any[]>([]);
-  const [reporteSeleccionado, setReporteSeleccionado] = useState<any>(null);
-  const [actividades, setActividades] = useState<any[]>([]);
+  const [reportes, setReportes] = useState<Reporte[]>([]);
+  const [reporteSeleccionado, setReporteSeleccionado] = useState<Reporte | null>(null);
+  const [actividades, setActividades] = useState<ActividadFormulario[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
-  const [actividadEnEdicion, setActividadEnEdicion] = useState<any>(null);
+  const [actividadEnEdicion, setActividadEnEdicion] = useState<ActividadFormulario | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
-  const [categoriasDB, setCategoriasDB] = useState<any[]>([]);
-  const [accionesDB, setAccionesDB] = useState<any[]>([]);
-  const [odsDB, setOdsDB] = useState<any[]>([]); 
-  const [municipiosDB, setMunicipiosDB] = useState<any[]>([]);
+  const [categoriasDB, setCategoriasDB] = useState<Catalogo[]>([]);
+  const [accionesDB, setAccionesDB] = useState<Catalogo[]>([]);
+  const [odsDB, setOdsDB] = useState<Catalogo[]>([]); 
+  const [municipiosDB, setMunicipiosDB] = useState<Catalogo[]>([]);
+  const [sectoresDB, setSectoresDB] = useState<Catalogo[]>([]); 
   const [embajadoresLocal, setEmbajadoresLocal] = useState<any[]>([]);
 
   const [showSendDialog, setShowSendDialog] = useState(false);
-  const [evidenciaToDelete, setEvidenciaToDelete] = useState<number | null>(null);
+  const [evidenciaToDelete, setEvidenciaToDelete] = useState<number | string | null>(null);
 
   const fetchDatos = async () => {
     try {
       const { data: authData } = await supabase.auth.getUser();
       const userId = authData.user?.id;
-
       if (!userId) return;
       setCurrentUserId(userId);
 
-      const [resCat, resAcc, resOds, resMun, resRep] = await Promise.all([
+      const [resCat, resAcc, resOds, resMun, resSec, resRep] = await Promise.all([
         supabase.from('categorias_beneficiarios').select('id, nombre').eq('activo', true).order('id'),
         supabase.from('tipos_accion').select('id, nombre').eq('activo', true).order('id'),
         supabase.from('ods').select('id, numero, nombre, categoria_sostenibilidad').eq('activo', true).order('numero'),
         supabase.from('municipios').select('id, nombre').eq('activo', true).order('nombre'),
+        supabase.from('sectores_poblacion').select('id, nombre').eq('activo', true).order('id'),
         supabase.from('reportes').select('id, mes, anio, estado, periodo_inicio, periodo_fin').eq('usuario_id', userId).order('periodo_inicio', { ascending: false })
       ]);
 
@@ -85,12 +133,13 @@ export default function EmbajaReporte() {
       if (resAcc.data) setAccionesDB(resAcc.data);
       if (resOds.data) setOdsDB(resOds.data);
       if (resMun.data) setMunicipiosDB(resMun.data);
+      if (resSec.data) setSectoresDB(resSec.data);
 
       if (resRep.data) {
         const formateados = resRep.data.map(r => ({
           ...r,
           nombre_mes: `${MESES[(r.mes || 1) - 1]} ${r.anio}`
-        }));
+        })) as Reporte[];
         setReportes(formateados);
       }
     } catch (error) {
@@ -100,7 +149,7 @@ export default function EmbajaReporte() {
 
   useEffect(() => { fetchDatos(); }, []);
 
-  const seleccionarReporte = async (reporte: any) => {
+  const seleccionarReporte = async (reporte: Reporte) => {
     setReporteSeleccionado(reporte);
     setActividades([]); 
 
@@ -118,9 +167,10 @@ export default function EmbajaReporte() {
           *,
           municipios(nombre),
           actividad_beneficiarios(categoria_id, hombres, mujeres, total),
+          actividad_sectores(sector_id, hombres, mujeres, total),
           actividad_acciones(tipo_accion_id, cantidad),
-          actividad_sostenibilidad(area_id),
-          actividad_ods(ods_id, es_principal, ods(numero, nombre)),
+          actividad_ods(ods_id, es_principal),
+          actividad_asistentes(usuario_id),
           evidencias(id, url_archivo, usuario_id)
         `)
         .eq('creado_por_usuario_id', currentUserId) 
@@ -136,11 +186,10 @@ export default function EmbajaReporte() {
           actividad_id,
           actividades (
             *,
-            municipios(nombre),
             actividad_beneficiarios(categoria_id, hombres, mujeres, total),
+            actividad_sectores(sector_id, hombres, mujeres, total),
             actividad_acciones(tipo_accion_id, cantidad),
-            actividad_sostenibilidad(area_id),
-            actividad_ods(ods_id, es_principal, ods(numero, nombre)),
+            actividad_ods(ods_id, es_principal),
             evidencias(id, url_archivo, usuario_id)
           )
         `)
@@ -173,10 +222,31 @@ export default function EmbajaReporte() {
       const arrayActividades = Array.from(actividadesMap.values())
         .sort((a, b) => new Date(a.fecha_evento).getTime() - new Date(b.fecha_evento).getTime());
 
-      const actividadesCompletas = await Promise.all(arrayActividades.map(async (act: any) => {
+      const allEvidencePaths: string[] = [];
+      arrayActividades.forEach(act => {
+        const misEvidencias = act.evidencias?.filter((ev: any) => ev.usuario_id === currentUserId) || [];
+        misEvidencias.forEach((ev: any) => allEvidencePaths.push(ev.url_archivo));
+      });
+
+      const signedUrlsMap = new Map<string, string>();
+      if (allEvidencePaths.length > 0) {
+        const { data: signedData, error: signedErr } = await supabase.storage.from('evidencias').createSignedUrls(allEvidencePaths, 3600);
+        if (!signedErr && signedData) {
+          signedData.forEach(item => {
+            if (!item.error) signedUrlsMap.set(item.path || '', item.signedUrl || '');
+          });
+        }
+      }
+
+      const actividadesCompletas: ActividadFormulario[] = arrayActividades.map((act: any) => {
           let beneficiariosObj: any = {};
           act.actividad_beneficiarios?.forEach((b: any) => {
             beneficiariosObj[b.categoria_id] = { hombres: b.hombres?.toString(), mujeres: b.mujeres?.toString(), total: b.total?.toString() };
+          });
+          
+          let sectoresObj: any = {};
+          act.actividad_sectores?.forEach((s: any) => {
+            sectoresObj[s.sector_id] = { hombres: s.hombres?.toString(), mujeres: s.mujeres?.toString(), total: s.total?.toString() };
           });
 
           let odsSeleccionados: number[] = [];
@@ -194,19 +264,16 @@ export default function EmbajaReporte() {
              if (accionCat) tipo_actividad_nombre = accionCat.nombre;
           }
 
-          let evidenciasConUrlTemporal = [];
           const misEvidencias = act.evidencias?.filter((ev: any) => ev.usuario_id === currentUserId) || [];
+          const evidenciasConUrlTemporal = misEvidencias.map((ev: any) => ({
+            id: ev.id,
+            url: signedUrlsMap.get(ev.url_archivo) || '',
+            path_interno: ev.url_archivo
+          }));
 
-          if (misEvidencias.length > 0) {
-            evidenciasConUrlTemporal = await Promise.all(misEvidencias.map(async (ev: any) => {
-              const { data } = await supabase.storage.from('evidencias').createSignedUrl(ev.url_archivo, 3600);
-              return { 
-                id: ev.id, 
-                url: data?.signedUrl || '', 
-                path_interno: ev.url_archivo 
-              };
-            }));
-          }
+          const asistentes = act.actividad_asistentes || [];
+          const esColab = asistentes.length > 0;
+          const colaborador = esColab ? asistentes[0].usuario_id : '';
 
           return {
             ...act,
@@ -214,12 +281,13 @@ export default function EmbajaReporte() {
             rango_edad: act.rango_edad_beneficiarios,
             domicilio: { calle: act.calle || '', colonia: act.colonia || '', municipio: act.municipio_id || '' },
             beneficiarios: beneficiariosObj,
+            sectores: sectoresObj,
             ods_seleccionados: odsSeleccionados,
             evidencias: evidenciasConUrlTemporal,
-            es_colaborativa: false, 
-            colaborador_id: ''
+            es_colaborativa: esColab, 
+            colaborador_id: colaborador
           };
-      }));
+      });
 
       setActividades(actividadesCompletas);
     } catch (error) {
@@ -246,30 +314,37 @@ export default function EmbajaReporte() {
     cargarEmbajadores();
   }, [actividadEnEdicion?.es_colaborativa, actividadEnEdicion?.domicilio?.municipio, currentUserId]);
 
+  useEffect(() => {
+    return () => {
+      if (actividadEnEdicion?.evidencias) {
+        actividadEnEdicion.evidencias.forEach((ev) => {
+          if (ev.url && ev.url.startsWith('blob:')) URL.revokeObjectURL(ev.url);
+        });
+      }
+    };
+  }, [actividadEnEdicion]);
+
   const handleChangeSimple = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
-    if (type === 'checkbox') {
-      const checked = (e.target as HTMLInputElement).checked;
-      setActividadEnEdicion({ ...actividadEnEdicion, [name]: checked });
-    } else {
-      setActividadEnEdicion({ ...actividadEnEdicion, [name]: value });
-    }
+    const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
+    setActividadEnEdicion(prev => prev ? { ...prev, [name]: val } : null);
   };
 
   const handleDomicilioChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setActividadEnEdicion((prev: any) => ({
+    setActividadEnEdicion(prev => prev ? ({
       ...prev, 
       domicilio: { ...prev.domicilio, [name]: name === 'municipio' ? Number(value) : value },
       ...(name === 'municipio' ? { colaborador_id: '' } : {})
-    }));
+    }) : null);
   };
 
   const toggleOds = (odsId: number) => {
     if (!esPropietario) return;
-    setActividadEnEdicion((prev: any) => {
+    setActividadEnEdicion(prev => {
+      if (!prev) return prev;
       const arr = prev.ods_seleccionados || [];
-      if (arr.includes(odsId)) return { ...prev, ods_seleccionados: arr.filter((id: number) => id !== odsId) };
+      if (arr.includes(odsId)) return { ...prev, ods_seleccionados: arr.filter(id => id !== odsId) };
       if (arr.length >= 4) { 
         notifyWithSound('Solo puedes seleccionar un máximo de 4 ODS.', 'warning'); 
         return prev; 
@@ -279,10 +354,47 @@ export default function EmbajaReporte() {
   };
 
   const handleBeneficiarioChange = (categoriaId: number, campo: string, value: string) => {
-    setActividadEnEdicion((prev: any) => {
+    setActividadEnEdicion(prev => {
+      if (!prev) return prev;
       const prevBenef = prev.beneficiarios?.[categoriaId] || {};
       const updatedBenef = { ...prevBenef, [campo]: value };
       return { ...prev, beneficiarios: { ...prev.beneficiarios, [categoriaId]: updatedBenef } };
+    });
+  };
+
+  const handleSectorChange = (sectorId: number, campo: 'hombres' | 'mujeres', value: string) => {
+    setActividadEnEdicion(prev => {
+      if (!prev) return prev;
+      
+      let totalCatSum = 0;
+      if (prev.beneficiarios) {
+        Object.entries(prev.beneficiarios).forEach(([id, val]) => {
+          if (Number(id) !== 99) { 
+            totalCatSum += parseInt(val[campo] || '0', 10);
+          }
+        });
+      }
+
+      let sumOtrosSectores = 0;
+      if (prev.sectores) {
+        Object.entries(prev.sectores).forEach(([id, val]) => {
+          if (Number(id) !== sectorId) {
+            sumOtrosSectores += parseInt(val[campo] || '0', 10);
+          }
+        });
+      }
+
+      const maxPermitido = totalCatSum - sumOtrosSectores;
+      let valStr = value;
+      let valNum = parseInt(value || '0', 10);
+      
+      if (valNum > maxPermitido) {
+        notifyWithSound(`Límite alcanzado: Solo tienes ${maxPermitido} ${campo} disponibles según tu registro de categorías.`, 'warning');
+        valStr = maxPermitido.toString();
+      }
+
+      const currentSec = prev.sectores?.[sectorId] || { hombres: '0', mujeres: '0', total: '0' };
+      return { ...prev, sectores: { ...prev.sectores, [sectorId]: { ...currentSec, [campo]: valStr } } };
     });
   };
 
@@ -291,7 +403,8 @@ export default function EmbajaReporte() {
     const file = e.target.files[0];
     const url = URL.createObjectURL(file);
     
-    setActividadEnEdicion((prev: any) => {
+    setActividadEnEdicion(prev => {
+      if (!prev) return prev;
       const evidenciasActuales = prev.evidencias || [];
       if (evidenciasActuales.length >= 4) {
         notifyWithSound("Máximo 4 evidencias permitidas por actividad.", "warning");
@@ -302,9 +415,9 @@ export default function EmbajaReporte() {
   };
 
   const confirmEliminarEvidencia = async () => {
-    if (evidenciaToDelete === null) return;
+    if (evidenciaToDelete === null || !actividadEnEdicion) return;
     const idEliminar = evidenciaToDelete;
-    const evEliminar = actividadEnEdicion.evidencias.find((ev: any) => ev.id === idEliminar);
+    const evEliminar = actividadEnEdicion.evidencias.find(ev => ev.id === idEliminar);
     
     if (evEliminar && !evEliminar.file) {
       const toastId = toast.loading('Eliminando evidencia...');
@@ -324,9 +437,14 @@ export default function EmbajaReporte() {
       }
     }
 
-    setActividadEnEdicion((prev: any) => ({
-      ...prev, evidencias: prev.evidencias.filter((ev: any) => ev.id !== idEliminar)
-    }));
+    if (evEliminar && evEliminar.url && evEliminar.url.startsWith('blob:')) {
+      URL.revokeObjectURL(evEliminar.url);
+    }
+
+    setActividadEnEdicion(prev => {
+      if (!prev) return prev;
+      return { ...prev, evidencias: prev.evidencias.filter(ev => ev.id !== idEliminar) };
+    });
     
     setEvidenciaToDelete(null);
   };
@@ -341,153 +459,127 @@ export default function EmbajaReporte() {
 
     setGuardando(true);
     try {
-      let actId = actividadEnEdicion.id;
-      const esNueva = String(actId).startsWith('act-');
+      const esNueva = String(actividadEnEdicion.id || '').startsWith('act-');
+      
+      let totalBenSum = 0;
+      let totalCatH = 0, totalCatM = 0;
+      let totalSecH = 0, totalSecM = 0;
 
-      let totalBeneficiariosSum = 0;
-      if (actividadEnEdicion.beneficiarios) {
-        Object.entries(actividadEnEdicion.beneficiarios).forEach(([catIdStr, val]: [string, any]) => {
+      const payloadBeneficiarios: any[] = [];
+      const payloadSectores: any[] = [];
+      const payloadOds: any[] = [];
+      const areasSeleccionadas = new Set<number>();
+
+      if (!actividadEnEdicion.es_externa) {
+        Object.entries(actividadEnEdicion.beneficiarios || {}).forEach(([catIdStr, val]) => {
           if (Number(catIdStr) !== 99) {
-            totalBeneficiariosSum += parseInt(val.hombres || '0', 10) + parseInt(val.mujeres || '0', 10);
+            const h = parseInt(val.hombres || '0', 10);
+            const m = parseInt(val.mujeres || '0', 10);
+            totalCatH += h;
+            totalCatM += m;
+            if (h > 0 || m > 0) {
+              totalBenSum += (h + m);
+              payloadBeneficiarios.push({ categoria_id: Number(catIdStr), hombres: h, mujeres: m, total: h + m });
+            }
           }
         });
+
+        Object.entries(actividadEnEdicion.sectores || {}).forEach(([secIdStr, val]) => {
+          const h = parseInt(val.hombres || '0', 10);
+          const m = parseInt(val.mujeres || '0', 10);
+          totalSecH += h;
+          totalSecM += m;
+          if (h > 0 || m > 0) {
+            payloadSectores.push({ sector_id: Number(secIdStr), hombres: h, mujeres: m, total: h + m });
+          }
+        });
+
+        if (totalSecH > totalCatH || totalSecM > totalCatM) {
+          notifyWithSound("Error: La cantidad en Sectores supera el total de Beneficiarios.", "error");
+          setGuardando(false);
+          return;
+        }
       }
 
-      if (actividadEnEdicion.es_propia) {
-        const actividadData = {
+      actividadEnEdicion.ods_seleccionados?.forEach((odsId, idx) => {
+        payloadOds.push({ ods_id: odsId, es_principal: idx === 0 });
+        
+        const odsObj = odsDB.find(o => o.id === odsId);
+        if (odsObj?.categoria_sostenibilidad) {
+          const cat = odsObj.categoria_sostenibilidad.toLowerCase();
+          if (cat.includes('econ')) areasSeleccionadas.add(1);
+          if (cat.includes('social') || cat.includes('sociedad')) areasSeleccionadas.add(2);
+          if (cat.includes('ambient') || cat.includes('biosfera')) areasSeleccionadas.add(3);
+          if (cat.includes('transversal') || cat.includes('alianza')) { areasSeleccionadas.add(1); areasSeleccionadas.add(2); areasSeleccionadas.add(3); }
+        }
+      });
+
+      const tipoAccionObj = accionesDB.find(a => a.nombre === actividadEnEdicion.tipo_actividad);
+
+      const payloadTransaccion = {
+        es_nueva: esNueva,
+        creado_por_usuario_id: currentUserId,
+        reporte_id: reporteSeleccionado.id,
+        es_colaborativa: actividadEnEdicion.es_colaborativa,
+        colaborador_id: actividadEnEdicion.colaborador_id || null,
+        accion_id: tipoAccionObj ? tipoAccionObj.id : null,
+        
+        actividad: {
+          id: esNueva ? null : actividadEnEdicion.id,
           nombre: actividadEnEdicion.nombre,
           fecha_evento: actividadEnEdicion.fecha_evento,
           hora_inicio: actividadEnEdicion.hora_inicio || null,
           hora_fin: actividadEnEdicion.hora_fin || null,
           lugar: actividadEnEdicion.lugar,
           municipio_id: actividadEnEdicion.domicilio?.municipio || null,
-          calle: actividadEnEdicion.domicilio?.calle,
-          colonia: actividadEnEdicion.domicilio?.colonia,
-          rango_edad_beneficiarios: actividadEnEdicion.rango_edad,
+          calle: actividadEnEdicion.domicilio?.calle || null,
+          colonia: actividadEnEdicion.domicilio?.colonia || null,
+          rango_edad_beneficiarios: actividadEnEdicion.es_externa ? null : actividadEnEdicion.rango_edad,
           descripcion: actividadEnEdicion.descripcion,
-          creado_por_usuario_id: currentUserId,
-          estado: 'Programada', 
-          fecha_actualizacion: new Date().toISOString()
-        };
+          es_externa: actividadEnEdicion.es_externa,
+          organizador_externo: actividadEnEdicion.es_externa ? actividadEnEdicion.organizador_externo : null,
+          beneficiarios_directos: totalBenSum
+        },
+        beneficiarios: payloadBeneficiarios,
+        sectores: payloadSectores,
+        ods: payloadOds,
+        sostenibilidad: Array.from(areasSeleccionadas)
+      };
 
-        if (esNueva) {
-          const { data: insertada, error: errIns } = await supabase.from('actividades').insert({ 
-            ...actividadData, 
-            fecha_creacion: new Date().toISOString(), 
-            beneficiarios_directos: totalBeneficiariosSum, 
-            beneficiarios_indirectos: 0 
-          }).select('id').single();
+      const { data: dbData, error: dbError } = await supabase.rpc('guardar_actividad_transaccional', { payload: payloadTransaccion });
+      if (dbError) throw new Error(dbError.message);
+      
+      const savedActId = dbData.actividad_id;
+
+      const archivosNuevos = actividadEnEdicion.evidencias.filter(ev => ev.file);
+      
+      if (archivosNuevos.length > 0) {
+        const uploadPromises = archivosNuevos.map(async (ev) => {
+          const fileExt = ev.file!.name.split('.').pop();
+          const fileName = `${savedActId}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+          const filePath = `${currentUserId}/${fileName}`; 
+
+          const { error: uploadError } = await supabase.storage.from('evidencias').upload(filePath, ev.file!);
+          if (uploadError) throw new Error("No se pudo subir la imagen.");
+
+          const { error: insertErr } = await supabase.from('evidencias').insert({
+            actividad_id: savedActId,
+            url_archivo: filePath,
+            usuario_id: currentUserId
+          });
           
-          if (errIns) throw errIns;
-          actId = insertada.id;
-
-          await supabase.from('actividad_asistentes').insert([{ actividad_id: actId, usuario_id: currentUserId }]);
-          
-          if (actividadEnEdicion.es_colaborativa && actividadEnEdicion.colaborador_id) {
-             await supabase.from('actividad_asistentes').insert([{ actividad_id: actId, usuario_id: actividadEnEdicion.colaborador_id }]);
-          }
-
-        } else {
-          const { error: errAct } = await supabase.from('actividades').update({
-            ...actividadData,
-            beneficiarios_directos: totalBeneficiariosSum
-          }).eq('id', actId);
-          if (errAct) throw errAct;
-
-          if (actividadEnEdicion.es_colaborativa && actividadEnEdicion.colaborador_id) {
-            await supabase.from('actividad_asistentes').upsert(
-              { actividad_id: actId, usuario_id: actividadEnEdicion.colaborador_id }, 
-              { onConflict: 'actividad_id,usuario_id' }
-            );
-          }
-        }
-
-        if (actividadEnEdicion.beneficiarios) {
-          for (const [catIdStr, valores] of Object.entries(actividadEnEdicion.beneficiarios)) {
-            const catId = Number(catIdStr);
-            if (catId === 99) continue; 
-            
-            const val: any = valores;
-            await supabase.from('actividad_beneficiarios').upsert({
-              actividad_id: actId, categoria_id: catId,
-              hombres: parseInt(val.hombres || '0', 10), 
-              mujeres: parseInt(val.mujeres || '0', 10), 
-              total: parseInt(val.hombres || '0', 10) + parseInt(val.mujeres || '0', 10),
-              actualizado_en: new Date().toISOString(), 
-              creado_en: new Date().toISOString()
-            }, { onConflict: 'actividad_id,categoria_id' }); 
-          }
-        }
-
-        await supabase.from('actividad_acciones').delete().eq('actividad_id', actId);
-        if (actividadEnEdicion.tipo_actividad) {
-          const tipoObj = accionesDB.find(a => a.nombre === actividadEnEdicion.tipo_actividad);
-          if (tipoObj) {
-            await supabase.from('actividad_acciones').insert({
-              actividad_id: actId, tipo_accion_id: tipoObj.id, cantidad: 1, creado_en: new Date().toISOString()
-            });
-          }
-        }
-
-        const areasSeleccionadas = new Set<number>();
-        actividadEnEdicion.ods_seleccionados?.forEach((odsId: number) => {
-          const odsObj = odsDB.find(o => o.id === odsId);
-          if (!odsObj || !odsObj.categoria_sostenibilidad) return;
-          const cat = odsObj.categoria_sostenibilidad.toLowerCase();
-          if (cat.includes('econ')) areasSeleccionadas.add(1);
-          if (cat.includes('social') || cat.includes('sociedad')) areasSeleccionadas.add(2);
-          if (cat.includes('ambient') || cat.includes('biosfera')) areasSeleccionadas.add(3);
-          if (cat.includes('transversal') || cat.includes('alianza')) {
-            areasSeleccionadas.add(1); areasSeleccionadas.add(2); areasSeleccionadas.add(3);
+          if (insertErr) {
+            await supabase.storage.from('evidencias').remove([filePath]);
+            throw new Error("Error en la tabla evidencias al guardar registro. Se canceló la subida.");
           }
         });
 
-        await supabase.from('actividad_sostenibilidad').delete().eq('actividad_id', actId);
-        for (const areaId of Array.from(areasSeleccionadas)) {
-          await supabase.from('actividad_sostenibilidad').insert({ actividad_id: actId, area_id: areaId, creado_en: new Date().toISOString() });
-        }
-
-        await supabase.from('actividad_ods').delete().eq('actividad_id', actId);
-        if (actividadEnEdicion.ods_seleccionados && actividadEnEdicion.ods_seleccionados.length > 0) {
-          const odsPayload = actividadEnEdicion.ods_seleccionados.map((odsId: number, idx: number) => ({
-            actividad_id: actId, ods_id: odsId, es_principal: idx === 0 
-          }));
-          await supabase.from('actividad_ods').insert(odsPayload);
-        }
+        await Promise.all(uploadPromises); 
       }
-
-      await supabase.from('reporte_act').upsert({
-        reporte_id: reporteSeleccionado.id, actividad_id: actId,
-        estado_validacion: 'Pendiente', fecha_agregado: new Date().toISOString()
-      }, { onConflict: 'reporte_id,actividad_id' });
-
-      // EVIDENCIAS
-      if (actividadEnEdicion.evidencias && actividadEnEdicion.evidencias.length > 0) {
-        for (const ev of actividadEnEdicion.evidencias) {
-          if (ev.file) {
-            const fileExt = ev.file.name.split('.').pop();
-            const fileName = `${actId}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-            const filePath = `${currentUserId}/${fileName}`; 
-
-            const { error: uploadError } = await supabase.storage
-              .from('evidencias') 
-              .upload(filePath, ev.file);
-
-            if (uploadError) throw new Error("No se pudo subir una de las imágenes al Storage.");
-
-            const { error: dbError } = await supabase.from('evidencias').insert({
-              actividad_id: actId,
-              url_archivo: filePath,
-              usuario_id: currentUserId
-            });
-
-            if (dbError) throw new Error(`Error en la tabla evidencias: ${dbError.message}`);
-          }
-        }
-      }
+      
       notifyWithSound('Progreso guardado exitosamente', 'success');
       setActividadEnEdicion(null);
-      seleccionarReporte(reporteSeleccionado);
+      seleccionarReporte(reporteSeleccionado); 
       
     } catch (error: any) {
       console.error(error);
@@ -498,6 +590,7 @@ export default function EmbajaReporte() {
   };
 
   const crearNuevaActividad = () => {
+    if (!reporteSeleccionado) return;
     const mesStr = String(reporteSeleccionado.mes).padStart(2, '0');
     setActividadEnEdicion({
       id: `act-${Date.now()}`, 
@@ -507,44 +600,52 @@ export default function EmbajaReporte() {
       hora_inicio: '', hora_fin: '',
       ods_seleccionados: [], 
       lugar: '', domicilio: { municipio: '', colonia: '', calle: '' },
-      beneficiarios: {}, rango_edad: '', descripcion: '', evidencias: [],
-      es_colaborativa: false, colaborador_id: ''
+      beneficiarios: {}, sectores: {}, rango_edad: '', descripcion: '', evidencias: [],
+      es_colaborativa: false, colaborador_id: '',
+      es_externa: false, organizador_externo: ''
     });
   };
 
-  // ==========================================
-  // VALIDAR ANTES DE ENVIAR REPORTE
-  // ==========================================
   const validarReporteParaEnvio = () => {
     if (actividades.length === 0) return { listo: false, msg: 'No tienes actividades registradas en este mes.' };
 
     for (let act of actividades) {
-      // 1. Todas las actividades (propias y compartidas) deben tener al menos 1 foto
       if (!act.evidencias || act.evidencias.length === 0) {
         return { listo: false, msg: `La actividad "${act.nombre}" requiere al menos 1 fotografía de evidencia.` };
       }
 
-      // 2. Si es propia, debe tener toda la información llena
       if (act.es_propia) {
-        if (!act.nombre || !act.tipo_actividad || !act.fecha_evento || !act.hora_inicio || !act.hora_fin ||
-            !act.lugar || !act.domicilio?.municipio || !act.domicilio?.colonia || !act.domicilio?.calle ||
-            !act.rango_edad || !act.descripcion) {
-          return { listo: false, msg: `La actividad "${act.nombre}" tiene campos de información vacíos.` };
+        // Información básica que siempre es obligatoria
+        const faltaInfoBasica = !act.nombre || !act.tipo_actividad || !act.fecha_evento || !act.hora_inicio || !act.hora_fin || !act.lugar || !act.domicilio?.municipio || !act.descripcion;
+        
+        // Colonia y calle ya NO son obligatorios si es_externa es verdadero
+        const faltaDomicilio = !act.es_externa && (!act.domicilio?.colonia || !act.domicilio?.calle);
+
+        if (faltaInfoBasica || faltaDomicilio) {
+          return { listo: false, msg: `La actividad "${act.nombre}" tiene campos obligatorios de información vacíos.` };
         }
 
         if (!act.ods_seleccionados || act.ods_seleccionados.length === 0) {
           return { listo: false, msg: `La actividad "${act.nombre}" debe tener al menos 1 ODS seleccionado.` };
         }
 
-        // 3. Validar beneficiarios (mínimo 1)
-        let totalBen = 0;
-        if (act.beneficiarios) {
-          Object.values(act.beneficiarios).forEach((b: any) => {
-            totalBen += parseInt(b.hombres || '0', 10) + parseInt(b.mujeres || '0', 10);
-          });
-        }
-        if (totalBen === 0) {
-          return { listo: false, msg: `La actividad "${act.nombre}" debe tener al menos una persona beneficiada registrada.` };
+        if (act.es_externa) {
+          if (!act.organizador_externo || act.organizador_externo.trim() === '') {
+            return { listo: false, msg: `La actividad externa "${act.nombre}" requiere el nombre de la institución que organizó.` };
+          }
+        } else {
+          if (!act.rango_edad || act.rango_edad.trim() === '') {
+            return { listo: false, msg: `La actividad "${act.nombre}" requiere especificar el rango de edad.` };
+          }
+          let totalBen = 0;
+          if (act.beneficiarios) {
+            Object.values(act.beneficiarios).forEach((b: any) => {
+              totalBen += parseInt(b.hombres || '0', 10) + parseInt(b.mujeres || '0', 10);
+            });
+          }
+          if (totalBen === 0) {
+            return { listo: false, msg: `La actividad "${act.nombre}" debe tener al menos una persona beneficiada registrada.` };
+          }
         }
       }
     }
@@ -564,7 +665,10 @@ export default function EmbajaReporte() {
     if (!reporteSeleccionado) return;
     setIsSending(true);
     try {
-      const { error } = await supabase.from('reportes').update({ estado: 'Enviado' }).eq('id', reporteSeleccionado.id);
+      const { error } = await supabase.rpc('enviar_reporte', { 
+        p_reporte_id: reporteSeleccionado.id 
+      });
+
       if (error) throw error;
       
       toast.success('¡Reporte enviado exitosamente!');
@@ -580,9 +684,10 @@ export default function EmbajaReporte() {
 
   const getBadgeEstado = (estado: EstadoReporte) => {
     switch(estado) {
+      case 'Aprobado': return <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700"><CheckCircle2 className="w-3 h-3 mr-1.5"/> Aprobado</span>;
       case 'Enviado': return <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700"><CheckCircle2 className="w-3 h-3 mr-1.5"/> Enviado</span>;
       case 'Borrador': return <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700"><FileText className="w-3 h-3 mr-1.5"/> Borrador</span>;
-      case 'Regresado': return <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700"><AlertCircle className="w-3 h-3 mr-1.5"/> Regresado</span>;
+      case 'Regresado': return <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700"><AlertCircle className="w-3 h-3 mr-1.5"/> Regresado</span>;
       case 'Sin empezar': return <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600"><Clock className="w-3 h-3 mr-1.5"/> Sin empezar</span>;
       default: return <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600">{estado}</span>;
     }
@@ -593,7 +698,6 @@ export default function EmbajaReporte() {
   return (
     <div className="flex flex-col h-[calc(100vh-100px)] relative">
 
-      {/* ================= MODAL ENVIAR REPORTE ================= */}
       <AlertDialog open={showSendDialog} onOpenChange={setShowSendDialog}>
         <AlertDialogContent className="bg-white border border-gray-200 shadow-2xl rounded-2xl">
           <AlertDialogHeader>
@@ -618,7 +722,6 @@ export default function EmbajaReporte() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ================= MODAL ELIMINAR EVIDENCIA ================= */}
       <AlertDialog open={evidenciaToDelete !== null} onOpenChange={(isOpen) => !isOpen && setEvidenciaToDelete(null)}>
         <AlertDialogContent className="bg-white border border-gray-200 shadow-2xl rounded-2xl">
           <AlertDialogHeader>
@@ -641,10 +744,9 @@ export default function EmbajaReporte() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ================= MODAL DE EDICIÓN / REGISTRO ================= */}
       {actividadEnEdicion && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
             
             <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 shrink-0 rounded-t-2xl">
               <h3 className="font-black text-xl text-gray-800 flex items-center gap-2">
@@ -669,9 +771,40 @@ export default function EmbajaReporte() {
 
               <form id="form-edicion" onSubmit={guardarEdicionActividad} className="space-y-8">
                 
-                {/* DATOS GENERALES */}
                 <div className="space-y-4">
                   <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">Datos Generales</h4>
+                  
+                  {esPropietario && (
+                    <div className="bg-purple-50/50 p-4 border border-purple-100 rounded-xl mb-4">
+                      <label className="flex items-center gap-2 cursor-pointer mb-2">
+                        <input 
+                          type="checkbox" 
+                          name="es_externa" 
+                          checked={actividadEnEdicion.es_externa || false} 
+                          onChange={handleChangeSimple} 
+                          className="w-4 h-4 text-purple-600 rounded border-gray-300 focus:ring-purple-600"
+                        />
+                        <span className="text-sm font-bold text-gray-800">
+                          ¿Fue una actividad organizada por un tercero (Escuela, Institución, Empresa)?
+                        </span>
+                      </label>
+                      {actividadEnEdicion.es_externa && (
+                        <div className="mt-3 ml-6">
+                          <label className="block text-xs font-bold text-gray-600 mb-1">Nombre del Organizador o Institución <span className="text-red-500">*</span></label>
+                          <input 
+                            required
+                            type="text" 
+                            name="organizador_externo" 
+                            value={actividadEnEdicion.organizador_externo || ''} 
+                            onChange={handleChangeSimple} 
+                            placeholder="Ej. Instituto Sinaloense de la Juventud, Universidad Autónoma..."
+                            className="w-full border border-gray-300 rounded-lg p-2 text-sm bg-white outline-none focus:border-purple-500"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-gray-600 mb-1">Nombre de la Actividad <span className="text-red-500">*</span></label>
@@ -728,7 +861,6 @@ export default function EmbajaReporte() {
                   </div>
                 </div>
 
-                {/* UBICACIÓN Y COLABORACIÓN */}
                 <div className="space-y-4">
                   <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">Ubicación y Colaboración</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -751,17 +883,34 @@ export default function EmbajaReporte() {
                         ))}
                       </select>
                     </div>
+                    {/* AQUI ESTÁN LOS INPUTS DE COLONIA Y CALLE CON SUS ASTERISCOS DINÁMICOS */}
                     <div>
-                      <label className="block text-xs font-bold text-gray-600 mb-1">Colonia <span className="text-red-500">*</span></label>
-                      <input disabled={!esPropietario} required type="text" name="colonia" value={actividadEnEdicion.domicilio?.colonia || ''} onChange={handleDomicilioChange} className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 outline-none focus:border-[#00689D]"/>
+                      <label className="block text-xs font-bold text-gray-600 mb-1">Colonia {!actividadEnEdicion.es_externa && <span className="text-red-500">*</span>}</label>
+                      <input 
+                        disabled={!esPropietario} 
+                        required={!actividadEnEdicion.es_externa} 
+                        type="text" 
+                        name="colonia" 
+                        value={actividadEnEdicion.domicilio?.colonia || ''} 
+                        onChange={handleDomicilioChange} 
+                        className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 outline-none focus:border-[#00689D]"
+                      />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-gray-600 mb-1">Calle <span className="text-red-500">*</span></label>
-                      <input disabled={!esPropietario} required type="text" name="calle" value={actividadEnEdicion.domicilio?.calle || ''} onChange={handleDomicilioChange} className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 outline-none focus:border-[#00689D]"/>
+                      <label className="block text-xs font-bold text-gray-600 mb-1">Calle {!actividadEnEdicion.es_externa && <span className="text-red-500">*</span>}</label>
+                      <input 
+                        disabled={!esPropietario} 
+                        required={!actividadEnEdicion.es_externa} 
+                        type="text" 
+                        name="calle" 
+                        value={actividadEnEdicion.domicilio?.calle || ''} 
+                        onChange={handleDomicilioChange} 
+                        className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 outline-none focus:border-[#00689D]"
+                      />
                     </div>
                   </div>
 
-                  {esPropietario && String(actividadEnEdicion.id || '').startsWith('act-') && (
+                  {esPropietario && !actividadEnEdicion.es_externa && String(actividadEnEdicion.id || '').startsWith('act-') && (
                     <div className="bg-orange-50/50 p-4 border border-orange-100 rounded-xl mt-4">
                       <label className="flex items-center gap-2 cursor-pointer mb-2">
                         <input 
@@ -803,74 +952,115 @@ export default function EmbajaReporte() {
                   )}
                 </div>
 
-                {/* BENEFICIARIOS Y CONTADORES */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  <div className="space-y-4">
-                    <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2 flex justify-between">
-                      Beneficiarios
-                    </h4>
-                    {categoriasDB.map(cat => {
-                      const esFilaTotal = cat.id === 99;
+                {!actividadEnEdicion.es_externa && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    
+                    <div className="space-y-4">
+                      <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2 flex justify-between">
+                        Beneficiarios
+                      </h4>
+                      {categoriasDB.map(cat => {
+                        const esFilaTotal = cat.id === 99;
 
-                      let valH = 0, valM = 0;
-                      if (esFilaTotal) {
-                        categoriasDB.forEach(c => {
-                          if (c.id !== 99) {
-                            valH += parseInt(actividadEnEdicion.beneficiarios?.[c.id]?.hombres || '0', 10);
-                            valM += parseInt(actividadEnEdicion.beneficiarios?.[c.id]?.mujeres || '0', 10);
-                          }
-                        });
-                      } else {
-                        valH = parseInt(actividadEnEdicion.beneficiarios?.[cat.id]?.hombres || '0', 10);
-                        valM = parseInt(actividadEnEdicion.beneficiarios?.[cat.id]?.mujeres || '0', 10);
-                      }
+                        let valH = 0, valM = 0;
+                        if (esFilaTotal) {
+                          categoriasDB.forEach(c => {
+                            if (c.id !== 99) {
+                              valH += parseInt(actividadEnEdicion.beneficiarios?.[c.id]?.hombres || '0', 10);
+                              valM += parseInt(actividadEnEdicion.beneficiarios?.[c.id]?.mujeres || '0', 10);
+                            }
+                          });
+                        } else {
+                          valH = parseInt(actividadEnEdicion.beneficiarios?.[cat.id]?.hombres || '0', 10);
+                          valM = parseInt(actividadEnEdicion.beneficiarios?.[cat.id]?.mujeres || '0', 10);
+                        }
 
-                      const strTotal = (valH + valM) > 0 ? (valH + valM).toString() : '';
-                      const strH = valH > 0 ? valH.toString() : '';
-                      const strM = valM > 0 ? valM.toString() : '';
+                        const strTotal = (valH + valM) > 0 ? (valH + valM).toString() : '';
+                        const strH = valH > 0 ? valH.toString() : '';
+                        const strM = valM > 0 ? valM.toString() : '';
 
-                      return (
-                        <div key={cat.id} className={`flex gap-2 items-center p-2 rounded-lg border ${esFilaTotal ? 'bg-[#00689D]/5 border-[#00689D]/20 mt-4' : 'bg-gray-50 border-gray-100'}`}>
-                          <span className={`w-1/3 text-[10px] leading-tight ${esFilaTotal ? 'font-black text-[#00689D]' : 'font-bold text-gray-600'}`}>
-                            {cat.nombre}
-                          </span>
-                          
-                          <input 
-                            type="number" placeholder="0" value={strTotal} disabled tabIndex={-1}
-                            className={`w-1/5 border text-center rounded p-1 text-xs cursor-not-allowed pointer-events-none select-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${esFilaTotal ? 'bg-[#00689D]/10 border-[#00689D]/20 text-[#00689D] font-bold' : 'border-gray-200 bg-gray-100 text-gray-500'}`}
-                          />
-                          
-                          <input 
-                            type="number" min="0" placeholder="H" value={strH} 
-                            onChange={esFilaTotal ? undefined : (e) => handleBeneficiarioChange(cat.id, 'hombres', e.target.value)} 
-                            disabled={esFilaTotal || !esPropietario}
-                            className={`w-1/5 text-center border rounded p-1 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${esFilaTotal || !esPropietario ? 'bg-gray-100 text-gray-500 font-bold cursor-not-allowed' : 'border-gray-300 focus:outline-none focus:border-[#00689D]'}`}
-                          />
-                          
-                          <input 
-                            type="number" min="0" placeholder="M" value={strM} 
-                            onChange={esFilaTotal ? undefined : (e) => handleBeneficiarioChange(cat.id, 'mujeres', e.target.value)} 
-                            disabled={esFilaTotal || !esPropietario}
-                            className={`w-1/5 text-center border rounded p-1 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${esFilaTotal || !esPropietario ? 'bg-gray-100 text-gray-500 font-bold cursor-not-allowed' : 'border-gray-300 focus:outline-none focus:border-[#00689D]'}`}
-                          />
-                        </div>
-                      );
-                    })}
+                        return (
+                          <div key={cat.id} className={`flex gap-2 items-center p-2 rounded-lg border ${esFilaTotal ? 'bg-[#00689D]/5 border-[#00689D]/20 mt-4' : 'bg-gray-50 border-gray-100'}`}>
+                            <span className={`w-1/3 text-[10px] leading-tight ${esFilaTotal ? 'font-black text-[#00689D]' : 'font-bold text-gray-600'}`}>
+                              {cat.nombre}
+                            </span>
+                            
+                            <input 
+                              type="number" placeholder="0" value={strTotal} disabled tabIndex={-1}
+                              className={`w-1/5 border text-center rounded p-1 text-xs cursor-not-allowed pointer-events-none select-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${esFilaTotal ? 'bg-[#00689D]/10 border-[#00689D]/20 text-[#00689D] font-bold' : 'border-gray-200 bg-gray-100 text-gray-500'}`}
+                            />
+                            
+                            <input 
+                              type="number" min="0" placeholder="H" value={strH} 
+                              onChange={esFilaTotal ? undefined : (e) => handleBeneficiarioChange(cat.id, 'hombres', e.target.value)} 
+                              disabled={esFilaTotal || !esPropietario}
+                              className={`w-1/5 text-center border rounded p-1 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${esFilaTotal || !esPropietario ? 'bg-gray-100 text-gray-500 font-bold cursor-not-allowed' : 'border-gray-300 focus:outline-none focus:border-[#00689D]'}`}
+                            />
+                            
+                            <input 
+                              type="number" min="0" placeholder="M" value={strM} 
+                              onChange={esFilaTotal ? undefined : (e) => handleBeneficiarioChange(cat.id, 'mujeres', e.target.value)} 
+                              disabled={esFilaTotal || !esPropietario}
+                              className={`w-1/5 text-center border rounded p-1 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${esFilaTotal || !esPropietario ? 'bg-gray-100 text-gray-500 font-bold cursor-not-allowed' : 'border-gray-300 focus:outline-none focus:border-[#00689D]'}`}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="space-y-4">
+                      <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2 flex justify-between">
+                        Sectores de Población
+                      </h4>
+                      {sectoresDB.map(sec => {
+                        const valH = parseInt(actividadEnEdicion.sectores?.[sec.id]?.hombres || '0', 10);
+                        const valM = parseInt(actividadEnEdicion.sectores?.[sec.id]?.mujeres || '0', 10);
+                        
+                        const strTotal = (valH + valM) > 0 ? (valH + valM).toString() : '';
+                        const strH = valH > 0 ? valH.toString() : '';
+                        const strM = valM > 0 ? valM.toString() : '';
+
+                        return (
+                          <div key={sec.id} className="flex gap-2 items-center p-2 rounded-lg border bg-gray-50 border-gray-100">
+                            <span className="w-1/3 text-[10px] leading-tight font-bold text-gray-600">
+                              {sec.nombre}
+                            </span>
+                            
+                            <input 
+                              type="number" placeholder="0" value={strTotal} disabled tabIndex={-1}
+                              className="w-1/5 border text-center rounded p-1 text-xs cursor-not-allowed pointer-events-none select-none bg-gray-100 border-gray-200 text-gray-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                            
+                            <input 
+                              type="number" min="0" placeholder="H" value={strH} 
+                              onChange={(e) => handleSectorChange(sec.id, 'hombres', e.target.value)} 
+                              disabled={!esPropietario}
+                              className={`w-1/5 text-center border rounded p-1 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${!esPropietario ? 'bg-gray-100 text-gray-500 font-bold cursor-not-allowed' : 'border-gray-300 focus:outline-none focus:border-[#00689D]'}`}
+                            />
+                            
+                            <input 
+                              type="number" min="0" placeholder="M" value={strM} 
+                              onChange={(e) => handleSectorChange(sec.id, 'mujeres', e.target.value)} 
+                              disabled={!esPropietario}
+                              className={`w-1/5 text-center border rounded p-1 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${!esPropietario ? 'bg-gray-100 text-gray-500 font-bold cursor-not-allowed' : 'border-gray-300 focus:outline-none focus:border-[#00689D]'}`}
+                            />
+                          </div>
+                        );
+                      })}
+                      
+                      <div className="mt-6">
+                        <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2 mt-6">Rango de Edad Promedio <span className="text-red-500">*</span></h4>
+                        <input disabled={!esPropietario} required type="text" name="rango_edad" value={actividadEnEdicion.rango_edad || ''} onChange={handleChangeSimple} placeholder="Ej: 15 a 18 años" className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 outline-none focus:border-[#00689D] mt-2"/>
+                      </div>
+                    </div>
                   </div>
+                )}
 
-                  <div className="space-y-4">
-                    <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">Rango de Edad Promedio <span className="text-red-500">*</span></h4>
-                    <input disabled={!esPropietario} required type="text" name="rango_edad" value={actividadEnEdicion.rango_edad || ''} onChange={handleChangeSimple} placeholder="Ej: 15 a 18 años" className="w-full border border-gray-300 rounded-lg p-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 outline-none focus:border-[#00689D]"/>
-                  </div>
-                </div>
-
-                {/* DESCRIPCIÓN */}
                 <div className="space-y-4">
                   <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">Descripción de la Actividad <span className="text-red-500">*</span></h4>
                   <textarea disabled={!esPropietario} required name="descripcion" rows={3} value={actividadEnEdicion.descripcion || ''} onChange={handleChangeSimple} className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#00689D] outline-none resize-none disabled:bg-gray-100 disabled:text-gray-500" placeholder="Describe brevemente lo que hicieron..."/>
                 </div>
 
-                {/* EVIDENCIAS */}
                 <div className="space-y-4">
                   <h4 className="text-sm font-black text-[#00689D] uppercase tracking-wider border-b pb-2">
                     {esPropietario ? 'Evidencias Fotográficas' : 'Mis Evidencias Fotográficas'} <span className="text-red-500">*</span> ({actividadEnEdicion.evidencias?.length || 0} / 4)
@@ -899,7 +1089,6 @@ export default function EmbajaReporte() {
                     )}
                   </div>
                   
-                  {/* MEJORA: Aviso amigable (no bloqueante) si faltan evidencias */}
                   {(actividadEnEdicion.evidencias?.length || 0) === 0 && (
                     <p className="text-xs text-orange-500 font-bold mt-1">
                       Recuerda subir al menos 1 fotografía antes de enviar tu reporte final.
@@ -914,7 +1103,7 @@ export default function EmbajaReporte() {
               <button type="button" onClick={() => setActividadEnEdicion(null)} className="flex-1 py-3 rounded-xl font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-100 transition-colors">
                 Cancelar
               </button>
-              {/* MEJORA: El botón ya NO se bloquea si hay 0 evidencias */}
+              
               <button form="form-edicion" type="submit" disabled={guardando} className="flex-1 py-3 rounded-xl font-bold text-white bg-[#00689D] hover:bg-[#00527A] disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-md transition-colors">
                 {guardando ? <><Loader2 className="animate-spin" size={18}/> Guardando...</> : <><Save size={20}/> Guardar Avance</>}
               </button>
@@ -924,7 +1113,6 @@ export default function EmbajaReporte() {
         </div>
       )}
 
-      {/* CABECERA */}
       <div className="mb-6 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center shrink-0">
         <div>
           <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2"><Calendar className="text-[#00689D]"/> Mis Reportes Mensuales</h1>
@@ -932,10 +1120,7 @@ export default function EmbajaReporte() {
         </div>
       </div>
 
-      {/* CONTENIDO PRINCIPAL */}
       <div className="flex flex-1 gap-6 min-h-0">
-        
-        {/* LISTA DE REPORTES (Izquierda) */}
         <div className="w-1/4 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col shrink-0 overflow-hidden">
           <div className="p-4 border-b border-gray-100 bg-gray-50">
             <h3 className="text-sm font-black text-gray-700">Mis Reportes</h3>
@@ -955,7 +1140,6 @@ export default function EmbajaReporte() {
           </div>
         </div>
 
-        {/* DETALLE DEL REPORTE (Derecha) */}
         {reporteSeleccionado ? (
           <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col min-w-0">
             <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center shrink-0">
@@ -964,7 +1148,6 @@ export default function EmbajaReporte() {
                 <p className="text-xs text-gray-600 mt-1">Gestiona las actividades de este periodo</p>
               </div>
               
-              {/* MEJORA: Al hacer clic primero valida con handleIntentarEnviar() */}
               <button 
                 onClick={handleIntentarEnviar}
                 disabled={reporteSeleccionado.estado === 'Enviado' || actividades.length === 0}
@@ -1011,7 +1194,9 @@ export default function EmbajaReporte() {
                             {idx + 1}
                           </div>
                           <h4 className="font-bold text-gray-900 truncate">
-                            {act.nombre} {!act.es_propia && <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">Compartida</span>}
+                            {act.nombre} 
+                            {!act.es_propia && <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">Compartida</span>}
+                            {act.es_externa && <span className="ml-2 text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">Externa</span>}
                           </h4>
                         </div>
                         <p className="text-xs text-gray-600 ml-11 flex flex-wrap items-center gap-2 mt-1">
@@ -1030,6 +1215,7 @@ export default function EmbajaReporte() {
               </div>
             </div>
           </div>
+          
         ) : (
           <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex items-center justify-center">
             <div className="text-center text-gray-500">

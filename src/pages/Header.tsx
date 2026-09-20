@@ -158,6 +158,7 @@ export default function Header() {
                     <Link to="/administrador/calendario" className={navLinkClass}>Calendario <span className={underlineClass}></span></Link>
                     <Link to="/administrador/reportes" className={navLinkClass}>Reportes <span className={underlineClass}></span></Link>
                     <Link to="/administrador/catalogos" className={navLinkClass}>Configuración <span className={underlineClass}></span></Link>
+                    <Link to="/administrador/perfil" className={navLinkClass}>Perfil <span className={underlineClass}></span></Link>
                   </>
                 )}
 
@@ -166,6 +167,7 @@ export default function Header() {
                     <Link to="/embajador/inicio" className={navLinkClass}>Mi Espacio <span className={underlineClass}></span></Link>
                     <Link to="/embajador/calendario" className={navLinkClass}>Mi Agenda <span className={underlineClass}></span></Link>
                     <Link to="/embajador/reportes" className={navLinkClass}>Mis Reportes <span className={underlineClass}></span></Link>
+                    <Link to="/embajador/perfil" className={navLinkClass}>Perfil <span className={underlineClass}></span></Link>
                   </>
                 )}
 
@@ -214,6 +216,7 @@ export default function Header() {
                 <a href="/acercade" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Acerca de</a>
                 <a href="/contacto" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Contacto</a>
                 <a href="/resultados" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Resultados</a>
+                <Link to="/perfil" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Perfil</Link>
                 <div className="pt-6 mt-4 border-t border-gray-100">
                   <Link to="/Login" onClick={closeMenu} className="bg-[#04111f] text-white w-full py-4 rounded text-xs font-bold uppercase tracking-widest text-center shadow-lg block">
                     Acceder al Portal
@@ -233,6 +236,7 @@ export default function Header() {
                     <Link to="/administrador/reportes" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Reportes</Link>
                     <Link to="/administrador/catalogos" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Configuración</Link>
                     <Link to="/administrador/calendario" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Calendario</Link>
+                    <Link to="/administrador/perfil" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Perfil</Link>
                   </>
                 )}
 
@@ -241,6 +245,7 @@ export default function Header() {
                     <Link to="/embajador/inicio" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Mi Espacio</Link>
                     <Link to="/embajador/calendario" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Mi Agenda</Link>
                     <Link to="/embajador/reportes" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Mis Reportes</Link>
+                    <Link to="/embajador/perfil" onClick={closeMenu} className="text-gray-800 text-sm font-bold uppercase tracking-wider hover:text-[#00689D]">Mi Perfil</Link>
                   </>
                 )}
 
