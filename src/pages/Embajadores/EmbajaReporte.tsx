@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Calendar, FileText, Send, AlertCircle, Clock, CheckCircle2, 
-  Plus, X, Save, UploadCloud, Edit2, Loader2, Info, Globe, Users, Building2, AlertTriangle,
+  Plus, X, Save, UploadCloud, Edit2, Loader2, Info, Globe, Users, 
+  FileDown, Building2, AlertTriangle,
+  Lock
 } from 'lucide-react';
 import { BlobProvider, PDFDownloadLink, Document } from '@react-pdf/renderer';
 import { toast } from 'sonner';
@@ -19,7 +21,7 @@ import ReportePDF from '../../ReportePDF';
 // ==========================================
 // INTERFACES ESTRICTAS
 // ==========================================
-type EstadoReporte = 'Sin empezar' | 'Borrador' | 'Enviado' | 'Regresado' | 'Aprobado' | 'Cerrado';
+type EstadoReporte = 'Sin empezar' | 'Borrador' | 'Enviado' | 'Regresado' | 'Aprobado' | 'Cerrado' | 'Deshabilitado';
 
 interface Reporte {
   id: number;
@@ -80,7 +82,7 @@ interface ActividadFormulario {
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const MAX_EVIDENCIAS = 4;
 const MAX_ODS = 4;
-const ESTADOS_BLOQUEADOS: EstadoReporte[] = ['Enviado', 'Aprobado', 'Cerrado'];
+const ESTADOS_BLOQUEADOS: EstadoReporte[] = ['Enviado', 'Aprobado', 'Cerrado', 'Deshabilitado'];
 
 const notifyWithSound = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
   try {
@@ -221,6 +223,9 @@ export default function EmbajaReporte() {
   const [loadingDatos, setLoadingDatos] = useState(true);
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
 
+  // Visor PDF Modal
+  const [showPdfDialog, setShowPdfDialog] = useState(false);
+
   const [isNuevaInstitucion, setIsNuevaInstitucion] = useState(false);
 
   // Catálogos
@@ -240,6 +245,9 @@ export default function EmbajaReporte() {
   const esPropietario = actividadEnEdicion?.es_propia !== false;
   const disablesEdition = !esPropietario || reporteBloqueado;
 
+  // NUEVO: Validación para saber si el PDF debe ser visible
+  const mostrarPDF = reporteSeleccionado ? ['Enviado', 'Aprobado', 'Cerrado'].includes(reporteSeleccionado.estado) : false;
+
   const fetchDatos = async () => {
     setLoadingDatos(true);
     try {
@@ -247,6 +255,11 @@ export default function EmbajaReporte() {
       const userId = authData.user?.id;
       if (!userId) return;
       setCurrentUserId(userId);
+
+      // --- LÓGICA DE AUTO-ASIGNACIÓN (Bypass RLS) ---
+      // Llama a la función de la BD antes de descargar los reportes del usuario
+      await supabase.rpc('auto_asignar_meses_faltantes');
+      // ----------------------------------------------
 
       const [resUser, resCat, resAcc, resOds, resMun, resSec, resAreas, resInst, resRep, resEmb] = await Promise.all([
         supabase.from('usuarios').select('nombre, apellido').eq('id', userId).single(),
@@ -488,6 +501,9 @@ export default function EmbajaReporte() {
     };
   }, [actividadEnEdicion]);
 
+  // ==========================================
+  // HANDLERS FORMULARIO
+  // ==========================================
   const handleChangeSimple = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
@@ -667,6 +683,7 @@ export default function EmbajaReporte() {
       return;
     }
 
+    // Validaciones
     if (actividadEnEdicion.es_colaborativa && !actividadEnEdicion.colaborador_id) {
       return notifyWithSound('Selecciona el embajador colaborador de la lista.', 'warning');
     }
@@ -791,7 +808,7 @@ export default function EmbajaReporte() {
       const { data: dbData, error: dbError } = await supabase.rpc('guardar_actividad_transaccional', { payload: payloadTransaccion });
       if (dbError) throw new Error(dbError.message);
       
-      const savedActId = dbData.actividad_id;
+      const savedActId = typeof dbData === 'object' && dbData?.actividad_id ? dbData.actividad_id : dbData;
 
       const archivosNuevos = actividadEnEdicion.evidencias.filter(ev => ev.file);
       if (archivosNuevos.length > 0) {
@@ -938,14 +955,14 @@ export default function EmbajaReporte() {
   // CONFIGURACIÓN DEL PDF
   // ==========================================
   const snapshotParaPDF = useMemo(() => {
-    if (!reporteSeleccionado || !usuarioInfo) return null;
+    if (!reporteSeleccionado || !usuarioInfo || !mostrarPDF) return null;
     return {
       ...reporteSeleccionado,
       embajador: { nombre: `${usuarioInfo.nombre} ${usuarioInfo.apellido}`.trim() },
       municipio_nombre: usuarioInfo.municipio,
       actividades: (reporteSeleccionado as any).actividades || []
     };
-  }, [reporteSeleccionado, usuarioInfo]);
+  }, [reporteSeleccionado, usuarioInfo, mostrarPDF]);
 
   const pdfDocument = useMemo<PDFDocumentElement | null>(() => {
     if (!snapshotParaPDF || categoriasDB.length === 0) return null;
@@ -967,6 +984,7 @@ export default function EmbajaReporte() {
       case 'Regresado': return <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700"><AlertCircle className="w-3 h-3 mr-1.5"/> Regresado</span>;
       case 'Cerrado': return <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-gray-200 text-gray-700"><Clock className="w-3 h-3 mr-1.5"/> Mes Cerrado</span>;
       case 'Sin empezar': return <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600"><Clock className="w-3 h-3 mr-1.5"/> Sin empezar</span>;
+      case 'Deshabilitado': return <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-gray-300 text-gray-800"><Lock className="w-3 h-3 mr-1.5"/> Deshabilitado</span>;
       default: return <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600">{estado}</span>;
     }
   };
@@ -1348,38 +1366,49 @@ export default function EmbajaReporte() {
               </div>
               
               <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                {/* BOTÓN VER PDF EN PC */}
+                {mostrarPDF && (
+                  <button onClick={() => setShowPdfDialog(true)} className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-lg font-bold border border-[#00689D] text-[#00689D] hover:bg-blue-50 transition-colors">
+                    <FileDown size={16} /> Ver PDF
+                  </button>
+                )}
+
                 <button onClick={handleIntentarEnviar} disabled={reporteBloqueado || actividades.length === 0} className={`flex-1 sm:flex-none justify-center flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-colors ${reporteBloqueado || actividades.length === 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#00689D] text-white hover:bg-[#00527A] shadow-md'}`}>
                   <Send size={16}/> {reporteBloqueado ? 'Reporte Enviado' : 'Enviar Reporte'}
                 </button>
               </div>
             </div>
-
-            {/* SPLIT VIEW (PDF A LA IZQUIERDA, LISTA A LA DERECHA) */}
+{/* SPLIT VIEW (PDF A LA IZQUIERDA, LISTA A LA DERECHA) */}
             <div className="flex-1 min-h-0 flex flex-col xl:flex-row overflow-y-auto lg:overflow-hidden relative bg-gray-50">
               
-              {/* VISTA PDF PARA COMPUTADORAS */}
-              <div className="hidden md:flex flex-1 min-w-0 h-full bg-gray-100 relative items-center justify-center border-b border-gray-200 xl:border-b-0 order-2 xl:order-1 overflow-hidden">
-                {snapshotParaPDF ? (
-                  <VisorPDFAislado document={pdfDocument} />
-                ) : (
-                  <div className="text-gray-400 text-sm">Esperando datos...</div>
-                )}
-              </div>
+              {/* SOLO SE MUESTRAN LOS BLOQUES DEL PDF SI EL REPORTE FUE ENVIADO */}
+              {mostrarPDF && (
+                <>
+                  {/* VISTA PDF PARA COMPUTADORAS */}
+                  <div className="hidden md:flex flex-1 min-w-0 h-full bg-gray-100 relative items-center justify-center border-b border-gray-200 xl:border-b-0 order-2 xl:order-1 overflow-hidden">
+                    {snapshotParaPDF ? (
+                      <VisorPDFAislado document={pdfDocument} />
+                    ) : (
+                      <div className="text-gray-400 text-sm">Esperando datos...</div>
+                    )}
+                  </div>
 
-              {/* VISTA DESCARGAR PARA CELULARES */}
-              <div className="md:hidden flex flex-col items-center justify-center w-full min-h-[420px] bg-gray-100 p-6 text-center order-2 xl:order-1 border-b border-gray-200">
-                <FileText size={64} className="text-gray-300 mb-4" />
-                <h3 className="font-bold text-gray-700 mb-2">Previsualización no disponible en móviles</h3>
-                <p className="text-xs text-gray-500 mb-6">Descarga el PDF para verlo en el visor de tu dispositivo.</p>
-                {pdfDocument && (
-                  <PDFDownloadLink document={pdfDocument} fileName={`Reporte-${reporteSeleccionado.nombre_mes}.pdf`} className="bg-[#00689D] text-white px-6 py-3 rounded-xl font-bold shadow-md hover:bg-[#00527A] flex items-center gap-2 transition-colors">
-                    {({ loading }) => loading ? <><Loader2 size={18} className="animate-spin" /> Procesando...</> : <><FileText size={18} /> Descargar Reporte PDF</>}
-                  </PDFDownloadLink>
-                )}
-              </div>
+                  {/* VISTA DESCARGAR PARA CELULARES */}
+                  <div className="md:hidden flex flex-col items-center justify-center w-full min-h-[300px] bg-gray-100 p-6 text-center order-2 xl:order-1 border-b border-gray-200">
+                    <FileText size={64} className="text-gray-300 mb-4" />
+                    <h3 className="font-bold text-gray-700 mb-2">Descargar Reporte</h3>
+                    <p className="text-xs text-gray-500 mb-6">Descarga el PDF para verlo en el visor de tu dispositivo.</p>
+                    {pdfDocument && (
+                      <PDFDownloadLink document={pdfDocument} fileName={`Reporte-${reporteSeleccionado.nombre_mes}.pdf`} className="bg-[#00689D] text-white px-6 py-3 rounded-xl font-bold shadow-md hover:bg-[#00527A] flex items-center gap-2 transition-colors">
+                        {({ loading }) => loading ? <><Loader2 size={18} className="animate-spin" /> Procesando...</> : <><FileText size={18} /> Descargar Reporte PDF</>}
+                      </PDFDownloadLink>
+                    )}
+                  </div>
+                </>
+              )}
 
-              {/* PANEL DERECHO: LISTA DE ACTIVIDADES */}
-              <div className="w-full xl:w-96 bg-gray-50 border-b xl:border-b-0 xl:border-l border-gray-200 flex flex-col shrink-0 order-1 xl:order-2 relative">
+              {/* PANEL DERECHO: LISTA DE ACTIVIDADES (Se expande si mostrarPDF es falso) */}
+              <div className={`w-full bg-gray-50 border-b xl:border-b-0 flex flex-col shrink-0 order-1 xl:order-2 relative ${mostrarPDF ? 'xl:w-96 xl:border-l border-gray-200' : 'flex-1 h-full'}`}>
                 
                 {cargandoDetalle && (
                   <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/60 backdrop-blur-[1px]">
@@ -1403,16 +1432,17 @@ export default function EmbajaReporte() {
                   )}
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {/* Si el PDF está oculto, usamos un grid de varias columnas para acomodar mejor las actividades a lo ancho */}
+                <div className={`flex-1 overflow-y-auto p-4 ${mostrarPDF ? 'space-y-3' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 content-start'}`}>
                   {actividades.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
+                    <div className={`text-center py-8 text-gray-500 ${mostrarPDF ? '' : 'col-span-full mt-10'}`}>
                       <Calendar className="w-10 h-10 mx-auto mb-3 opacity-30" />
                       <p className="font-bold text-sm">Sin actividades</p>
                       {!reporteBloqueado && <p className="text-xs mt-1">Añade tu primera actividad para este mes.</p>}
                     </div>
                   ) : (
                     actividades.map((act, idx) => (
-                      <div key={act.id} onClick={() => { setIsNuevaInstitucion(false); setActividadEnEdicion(act); }} className={`bg-white rounded-xl border shadow-sm transition-all p-3 hover:shadow-md cursor-pointer hover:border-[#00689D]/50 border-gray-200 ${!act.es_propia ? 'border-l-4 border-l-blue-400' : ''}`}>
+                      <div key={act.id} onClick={() => { setIsNuevaInstitucion(false); setActividadEnEdicion(act); }} className={`bg-white rounded-xl border shadow-sm transition-all p-3 hover:shadow-md cursor-pointer hover:border-[#00689D]/50 border-gray-200 ${!act.es_propia ? 'border-l-4 border-l-blue-400' : ''} ${!mostrarPDF ? 'h-fit' : ''}`}>
                         <div className="flex items-center gap-2 mb-2">
                           <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 font-bold text-[10px] ${!act.es_propia ? 'bg-blue-100 text-blue-700' : 'bg-[#00689D]/10 text-[#00689D]'}`}>
                             {idx + 1}
@@ -1435,8 +1465,7 @@ export default function EmbajaReporte() {
                 </div>
               </div>
             </div>
-
-          </div>
+            </div>
         ) : (
           <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex items-center justify-center flex-col text-gray-400 min-h-[400px]">
             <FileText size={48} className="mb-4 opacity-20"/>
@@ -1445,6 +1474,29 @@ export default function EmbajaReporte() {
           </div>
         )}
       </div>
+
+      {/* VISOR PDF EN MODAL COMPLETO (Si presiona el botón 'Ver PDF' en tablets o se necesita ampliar) */}
+      {showPdfDialog && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 md:p-10 animate-in fade-in">
+          <div className="bg-white rounded-2xl w-full h-full max-w-5xl flex flex-col overflow-hidden shadow-2xl">
+            <div className="flex justify-between items-center p-4 border-b bg-gray-50">
+              <h3 className="font-black text-lg text-gray-800 flex items-center gap-2"><FileDown className="text-[#00689D]"/> Visualizador de Reporte</h3>
+              <button onClick={() => setShowPdfDialog(false)} className="p-2 hover:bg-gray-200 rounded-full text-gray-500"><X size={24}/></button>
+            </div>
+            <div className="flex-1 bg-gray-100 relative">
+              {snapshotParaPDF ? (
+                <VisorPDFAislado document={pdfDocument} />
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500">
+                  <Loader2 className="animate-spin mb-4 text-[#00689D]" size={40} />
+                  <p className="font-bold">Generando documento PDF...</p>
+                  <p className="text-sm">Esto puede tardar unos segundos.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
