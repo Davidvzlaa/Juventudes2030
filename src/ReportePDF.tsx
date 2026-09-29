@@ -1138,7 +1138,7 @@ const styles = StyleSheet.create({
   evidenceWrapper2: { width: '100%', height: '48%', padding: 10 }, // 2 fotos (apiladas)
   evidenceWrapper4: { width: '50%', height: '48%', padding: 8 },  // 3 o 4 fotos (cuadrícula)
   
-  evidenceImage: { width: '100%', height: '100%', objectFit: 'contain', backgroundColor: '#F3F4F6', borderRadius: 4 }
+  evidenceImage: { width: '100%', height: '100%', objectFit: 'contain',  borderRadius: 4 }
 });
 
 // ==========================================
