@@ -90,6 +90,9 @@ export default function AdminDashboard() {
   const [filtroTopEmbajadores, setFiltroTopEmbajadores] = useState<number>(5);
   const [filtroTopMunicipios, setFiltroTopMunicipios] = useState<number>(3);
   const [filtroTopMuniEmbajadores, setFiltroTopMuniEmbajadores] = useState<number>(5);
+  
+  // NUEVO ESTADO: Criterio para ordenar la gráfica de Impacto por Municipio
+  const [criterioImpacto, setCriterioImpacto] = useState<'beneficiarios' | 'actividades' | 'embajadores'>('beneficiarios');
 
   const COLORS = ['#2563eb', '#16a34a', '#9333ea', '#eab308', '#ef4444', '#0ea5e9', '#f97316', '#8b5cf6', '#14b8a6', '#f43f5e'];
 
@@ -109,8 +112,6 @@ export default function AdminDashboard() {
     const fetchDashboardData = async () => {
       setLoading(true);
       try {
-        // MEJORA: Consultas seguras que no inflan los datos.
-        // Solo traemos actividades operativas y usuarios activos.
         const [resActividades, resUsuarios, resActOds, resMun, resOds] = await Promise.all([
           supabase.from('actividades')
             .select('id, beneficiarios_directos, beneficiarios_indirectos, municipios(nombre)')
@@ -206,7 +207,7 @@ export default function AdminDashboard() {
     if (filtroTopMuniEmbajadores > 0) {
       embajadoresPorMunicipio = embajadoresPorMunicipio.slice(0, filtroTopMuniEmbajadores);
     }
-    embajadoresPorMunicipio.sort((a, b) => a.name.localeCompare(b.name));
+    // LÍNEA ELIMINADA: Ya no ordenamos alfabéticamente al final.
 
     // 3. RANKING DE EMBAJADORES
     const embajadoresReales = usuarios.filter(u => getRelatedName(u.roles) === 'Embajador');
@@ -252,9 +253,9 @@ export default function AdminDashboard() {
       }
     });
 
+    // NUEVA LÓGICA: Ordenamiento dinámico basado en el state 'criterioImpacto'
     let topMunicipios = Object.values(muniStats).sort((a, b) => {
-      if (b.beneficiarios !== a.beneficiarios) return b.beneficiarios - a.beneficiarios;
-      return b.actividades - a.actividades;
+      return b[criterioImpacto] - a[criterioImpacto];
     });
 
     if (filtroTopMunicipios > 0) {
@@ -298,7 +299,8 @@ export default function AdminDashboard() {
       topMunicipios,
       topOds
     };
-  }, [rawData, filtroRol, filtroTopOds, filtroTopEmbajadores, filtroTopMunicipios, filtroTopMuniEmbajadores]);
+  // ATENCIÓN: Añadimos 'criterioImpacto' a las dependencias
+  }, [rawData, filtroRol, filtroTopOds, filtroTopEmbajadores, filtroTopMunicipios, filtroTopMuniEmbajadores, criterioImpacto]);
 
   if (loading) {
     return (
@@ -409,18 +411,19 @@ export default function AdminDashboard() {
                 <Pie data={stats.usuariosPorRol} cx="50%" cy="50%" innerRadius={70} outerRadius={95} paddingAngle={4} dataKey="count" label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}>
                   {stats.usuariosPorRol.map((_, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                 </Pie>
-                {/* Mejora: Formateo con separadores de miles */}
-<Tooltip formatter={(value: any) => [Number(value).toLocaleString('es-MX'), 'Usuarios']} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />              </PieChart>
+                <Tooltip formatter={(value: any) => [Number(value).toLocaleString('es-MX'), 'Usuarios']} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />              
+              </PieChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* GRÁFICA 2: Embajadores por Municipio (Orden A-Z) */}
+        {/* GRÁFICA 2: Embajadores por Municipio */}
         <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 space-y-3 md:space-y-0">
             <div>
               <h3 className="text-lg font-extrabold text-gray-900">Presencia Territorial</h3>
-              <p className="text-sm text-gray-500">Embajadores activos (A-Z)</p>
+              {/* TEXTO ACTUALIZADO */}
+              <p className="text-sm text-gray-500">Ordenado de mayor a menor</p>
             </div>
             <FilterTopButtons current={filtroTopMuniEmbajadores} setter={setFiltroTopMuniEmbajadores} />
           </div>
@@ -440,14 +443,29 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* GRÁFICA 3: Impacto por Municipio (Tres Métricas Separadas) */}
+        {/* GRÁFICA 3: Impacto por Municipio (Con Selector Dinámico) */}
         <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100 lg:col-span-2">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 space-y-3 md:space-y-0">
             <div>
               <h3 className="text-lg font-extrabold text-gray-900">Top Municipios con Mayor Impacto</h3>
-              <p className="text-sm text-gray-500">Ordenado por Beneficiados Totales</p>
+              {/* TEXTO DINÁMICO */}
+              <p className="text-sm text-gray-500 capitalize">Ordenado por {criterioImpacto}</p>
             </div>
-            <FilterTopButtons current={filtroTopMunicipios} setter={setFiltroTopMunicipios} />
+            
+            {/* NUEVO CONTENEDOR CON SELECT Y BOTONES TOP */}
+            <div className="flex flex-wrap items-center gap-3">
+              <select 
+                value={criterioImpacto}
+                onChange={(e) => setCriterioImpacto(e.target.value as 'beneficiarios' | 'actividades' | 'embajadores')}
+                className="text-sm font-bold border border-gray-200 rounded-lg text-gray-700 bg-gray-50 py-1.5 px-3 focus:outline-none focus:ring-2 focus:ring-[#00689D]/50 transition-all cursor-pointer"
+              >
+                <option value="beneficiarios">Filtrar por Beneficiados</option>
+                <option value="actividades">Filtrar por Actividades</option>
+                <option value="embajadores">Filtrar por Embajadores</option>
+              </select>
+
+              <FilterTopButtons current={filtroTopMunicipios} setter={setFiltroTopMunicipios} />
+            </div>
           </div>
           
           <div className="overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-gray-200">
@@ -542,4 +560,4 @@ export default function AdminDashboard() {
       </div>
     </div>
   );
-}   
+}

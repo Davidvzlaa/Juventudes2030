@@ -83,7 +83,7 @@ export default function Agenda2030Section() {
                   <HoverCard key={item.id}>
                     <HoverCardTrigger>
                       <div 
-                        onClick={() => setSelectedOds(item)} 
+                        
                         className="group relative flex h-32 sm:h-36 w-full cursor-pointer flex-col overflow-hidden p-2 text-left transition duration-300 hover:-translate-y-1 hover:shadow-xl rounded-md"
                         style={{ backgroundColor: bgColor }}
                       >
